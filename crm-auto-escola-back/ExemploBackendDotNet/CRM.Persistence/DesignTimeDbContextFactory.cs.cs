@@ -12,7 +12,7 @@ namespace CRM.Persistence
         public ExemploDbContext CreateDbContext(string[] args)
         {
             // Ajuste o nome da pasta conforme está na sua solução
-            var basePath = Path.Combine(Directory.GetCurrentDirectory(), "../CRM.Api");
+            var basePath = Path.Combine(Directory.GetCurrentDirectory(), "../CRM.API");
 
             var configuration = new ConfigurationBuilder()
                 .SetBasePath(basePath)
