@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using System.IO;
 
 namespace CRM.Persistence
@@ -16,6 +17,8 @@ namespace CRM.Persistence
             var configuration = new ConfigurationBuilder()
                 .SetBasePath(basePath)
                 .AddJsonFile("appsettings.json", optional: false)
+                .AddJsonFile($"appsettings.Development.json", optional: true)
+                .AddEnvironmentVariables()
                 .Build();
 
             var connectionString = configuration.GetConnectionString("DefaultConnection");

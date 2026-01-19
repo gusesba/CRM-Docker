@@ -1,0 +1,45 @@
+services:
+  crm-auto-escola-whats:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./crm-auto-escola-whats:/app
+    command: sh -c "npm install && npm start"
+    ports:
+      - "3001:3001"
+
+  crm-auto-escola-back:
+    image: mcr.microsoft.com/dotnet/sdk:9.0
+    working_dir: /app
+    volumes:
+      - ./crm-auto-escola-back/ExemploBackendDotNet:/app
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:5000
+      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=autoescola;Username=autoescola;Password=autoescola
+    depends_on:
+      - db
+    command: >
+      sh -c "
+      dotnet --info 
+      && dotnet tool install --global dotnet-ef --version 9.0.0
+      && export PATH=\"$$PATH:/root/.dotnet/tools\"
+      && dotnet restore CRM.API/CRM.API.csproj
+      && dotnet ef database update --project CRM.Persistence/CRM.Persistence.csproj --startup-project CRM.API/CRM.API.csproj
+      && dotnet build CRM.API/CRM.API.csproj -v normal
+      && dotnet run --project CRM.API/CRM.API.csproj --urls http://0.0.0.0:5000"
+    ports:
+      - "5000:5000"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: autoescola
+      POSTGRES_USER: autoescola
+      POSTGRES_PASSWORD: autoescola
+    ports:
+      - "5431:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:
