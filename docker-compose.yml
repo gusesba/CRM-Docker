@@ -1,6 +1,7 @@
 services:
   crm-auto-escola-whats:
     image: ghcr.io/browserless/chromium:latest
+    user: "0:0"
     working_dir: /app
     volumes:
       - ./crm-auto-escola-whats:/app
