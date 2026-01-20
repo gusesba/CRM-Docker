@@ -116,6 +116,14 @@ function createWhatsAppClient(userId, options = {}) {
     console.log(`[${userId}] WhatsApp conectado`);
   });
 
+  client.on("authenticated", () => console.log(`[${userId}] authenticated`));
+  client.on("loading_screen", (percent, msg) =>
+    console.log(`[${userId}] loading ${percent}% ${msg}`)
+  );
+  client.on("change_state", (state) =>
+    console.log(`[${userId}] state: ${state}`)
+  );
+
   client.on("auth_failure", (msg) => {
     ready = false;
     console.error(`[${userId}] Falha auth`, msg);
