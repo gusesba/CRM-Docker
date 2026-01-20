@@ -1,9 +1,9 @@
 {
-  auto_https off
+  local_certs
 }
 
 :80 {
-  redir https://{host}:443{uri} permanent
+  respond "OK" 200
 }
 
 :443 {
