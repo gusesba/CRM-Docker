@@ -1,0 +1,11 @@
+{
+  email {$ACME_EMAIL}
+}
+
+{$BACKEND_DOMAIN} {
+  reverse_proxy crm-auto-escola-back:5000
+}
+
+{$WHATS_DOMAIN} {
+  reverse_proxy crm-auto-escola-whats:3001
+}

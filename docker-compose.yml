@@ -1,8 +1,8 @@
 services:
   crm-auto-escola-whats:
     build: ./crm-auto-escola-whats
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     environment:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
       - WWEBJS_DATA_PATH=/data/.wwebjs_auth
@@ -29,8 +29,25 @@ services:
       && dotnet ef database update --project CRM.Persistence/CRM.Persistence.csproj --startup-project CRM.API/CRM.API.csproj
       && dotnet build CRM.API/CRM.API.csproj -v normal
       && dotnet run --project CRM.API/CRM.API.csproj --urls http://0.0.0.0:5000"
+    expose:
+      - "5000"
+
+  caddy:
+    image: caddy:2.8-alpine
     ports:
-      - "5000:5000"
+      - "80:80"
+      - "443:443"
+    environment:
+      BACKEND_DOMAIN: ${BACKEND_DOMAIN}
+      WHATS_DOMAIN: ${WHATS_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - crm-auto-escola-whats
+      - crm-auto-escola-back
 
   db:
     image: postgres:16-alpine
@@ -46,3 +63,5 @@ services:
 volumes:
   db-data:
   wwebjs-data:
+  caddy-data:
+  caddy-config:
