@@ -1,11 +1,17 @@
 {
-  email {$ACME_EMAIL}
+  # sem email, sem ACME público
 }
 
-{$BACKEND_DOMAIN} {
+http://{$VM_IP} {
+  redir https://{$VM_IP}{uri}
+}
+
+https://{$VM_IP} {
+  tls internal
   reverse_proxy crm-auto-escola-back:5000
 }
 
-{$WHATS_DOMAIN} {
+https://{$VM_IP}:8443 {
+  tls internal
   reverse_proxy crm-auto-escola-whats:3001
 }

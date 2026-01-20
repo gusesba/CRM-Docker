@@ -22,7 +22,7 @@ services:
       - db
     command: >
       sh -c "
-      dotnet --info 
+      dotnet --info
       && dotnet tool install --global dotnet-ef --version 9.0.0
       && export PATH=\"$$PATH:/root/.dotnet/tools\"
       && dotnet restore CRM.API/CRM.API.csproj
@@ -37,10 +37,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "8443:8443"
     environment:
-      BACKEND_DOMAIN: ${BACKEND_DOMAIN}
-      WHATS_DOMAIN: ${WHATS_DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL}
+      - VM_IP=SEU_IP_PUBLICO
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
