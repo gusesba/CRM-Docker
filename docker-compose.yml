@@ -9,6 +9,7 @@ services:
     shm_size: "256mb"
     volumes:
       - wwebjs-data:/data
+      - whats-media:/app/src/media
 
   crm-auto-escola-back:
     image: mcr.microsoft.com/dotnet/sdk:9.0
@@ -46,3 +47,4 @@ services:
 volumes:
   db-data:
   wwebjs-data:
+  whats-media:
