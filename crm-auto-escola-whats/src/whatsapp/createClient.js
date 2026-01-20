@@ -94,11 +94,13 @@ function createWhatsAppClient(userId, options = {}) {
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId, // 🔥 chave do multi-usuário
+      dataPath: process.env.WWEBJS_DATA_PATH || "/data/.wwebjs_auth"
     }),
     puppeteer: {
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: ["--no-sandbox", "--disable-setuid-sandbox","--disable-dev-shm-usage",
+    "--disable-gpu",],
     },
   });
 

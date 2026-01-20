@@ -5,6 +5,10 @@ services:
       - "3001:3001"
     environment:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
+      - WWEBJS_DATA_PATH=/data/.wwebjs_auth
+    shm_size: "256mb"
+    volumes:
+      - wwebjs-data:/data
 
   crm-auto-escola-back:
     image: mcr.microsoft.com/dotnet/sdk:9.0
@@ -41,3 +45,4 @@ services:
 
 volumes:
   db-data:
+  wwebjs-data:
