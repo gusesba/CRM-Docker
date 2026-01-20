@@ -39,7 +39,7 @@ services:
       - "443:443"
       - "8443:8443"
     environment:
-      - VM_IP=SEU_IP_PUBLICO
+      - VM_IP=92.246.129.45
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
