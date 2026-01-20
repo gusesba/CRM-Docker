@@ -1,17 +1,17 @@
 {
-  # sem email, sem ACME público
+  auto_https off
 }
 
-http://{$VM_IP} {
-  redir https://{$VM_IP}{uri}
+:80 {
+  redir https://{host}:443{uri} permanent
 }
 
-https://{$VM_IP} {
+:443 {
   tls internal
   reverse_proxy crm-auto-escola-back:5000
 }
 
-https://{$VM_IP}:8443 {
+:8443 {
   tls internal
   reverse_proxy crm-auto-escola-whats:3001
 }
