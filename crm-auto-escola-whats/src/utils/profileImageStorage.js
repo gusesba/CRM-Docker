@@ -5,7 +5,9 @@ const IMAGE_SIZE = 64;
 const IMAGE_QUALITY = 40;
 
 function getSafeName(value) {
-  return encodeURIComponent(String(value));
+  return String(value)
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 function getProfileImageInfo(userId, chatId) {
@@ -14,15 +16,32 @@ function getProfileImageInfo(userId, chatId) {
   const dir = path.join(__dirname, "..", "media", "imagens", safeUserId);
   const filename = `${safeChatId}.jpg`;
   const absolutePath = path.join(dir, filename);
-  const url = `/media/imagens/${safeUserId}/${filename}`;
+  const url = `/media/imagens/${safeUserId}/${encodeURIComponent(filename)}`;
 
   return { dir, absolutePath, url };
+}
+
+function getLegacyProfileImageInfo(userId, chatId) {
+  const legacyUserId = encodeURIComponent(String(userId));
+  const legacyChatId = encodeURIComponent(String(chatId));
+  const dir = path.join(__dirname, "..", "media", "imagens", legacyUserId);
+  const filename = `${legacyChatId}.jpg`;
+  const absolutePath = path.join(dir, filename);
+  const url = `/media/imagens/${encodeURIComponent(
+    legacyUserId
+  )}/${encodeURIComponent(filename)}`;
+
+  return { absolutePath, url };
 }
 
 function getProfileImageUrlFromDisk(userId, chatId) {
   const { absolutePath, url } = getProfileImageInfo(userId, chatId);
   if (fs.existsSync(absolutePath)) {
     return url;
+  }
+  const legacy = getLegacyProfileImageInfo(userId, chatId);
+  if (fs.existsSync(legacy.absolutePath)) {
+    return legacy.url;
   }
   return null;
 }
