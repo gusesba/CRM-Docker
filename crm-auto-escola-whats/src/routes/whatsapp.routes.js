@@ -15,6 +15,13 @@ const VALIDATE_TOKEN_URL = process.env.VALIDATE_TOKEN_URL || null;
 async function validateToken(req, res, next) {
   const token = req.query.token ?? req.body?.token;
 
+  if (
+    req.method === "GET" &&
+    req.path.match(/^\/[^/]+\/messages\/[^/]+\/media$/)
+  ) {
+    return next(); // ignora validação
+  }
+
   if (!token) {
     return res.status(401).json({ error: "Token não informado" });
   }
