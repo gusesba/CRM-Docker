@@ -1,12 +1,10 @@
 services:
   crm-auto-escola-whats:
-    image: node:20-alpine
-    working_dir: /app
-    volumes:
-      - ./crm-auto-escola-whats:/app
-    command: sh -c "npm install && npm start"
+    build: ./crm-auto-escola-whats
     ports:
       - "3001:3001"
+    environment:
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
 
   crm-auto-escola-back:
     image: mcr.microsoft.com/dotnet/sdk:9.0
