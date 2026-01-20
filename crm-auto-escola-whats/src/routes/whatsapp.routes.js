@@ -1,9 +1,10 @@
 const express = require("express");
 const { getSession, removeSession } = require("../whatsapp/manager");
+const { saveMedia, getCachedMedia } = require("../utils/mediaCache");
 const {
-  saveMedia,
-  getCachedMedia,
-} = require("../utils/mediaCache");
+  getProfileImageUrlFromDisk,
+  saveProfileImageFromUrl,
+} = require("../utils/profileImageStorage");
 const multer = require("multer");
 const fs = require("fs");
 const { MessageMedia } = require("whatsapp-web.js");
@@ -156,9 +157,6 @@ function withTimeout(promise, ms, fallback = null) {
 /**
  * LISTAR CONVERSAS
  */
-const profilePicCache = new Map();
-
-
 router.get("/:userId/conversations", async (req, res) => {
   const { userId } = req.params;
   const session = getSession(userId);
@@ -188,23 +186,26 @@ router.get("/:userId/conversations", async (req, res) => {
         batch.map(async (chat) => {
           const chatId = chat.id._serialized;
 
-          let profilePicUrl = profilePicCache.get(chatId) ?? null;
+          let profilePicUrl = getProfileImageUrlFromDisk(userId, chatId);
 
-          if (!profilePicCache.has(chatId)) {
+          if (!profilePicUrl) {
             try {
-              profilePicUrl = await withTimeout(
+              const remoteUrl = await withTimeout(
                 session.client.getProfilePicUrl(chatId),
                 3000, // ⏱️ 3s timeout
                 null
               );
 
-              profilePicCache.set(chatId, profilePicUrl);
+              profilePicUrl = await saveProfileImageFromUrl(
+                userId,
+                chatId,
+                remoteUrl
+              );
             } catch (err) {
               console.error(
                 `[${userId}] ⚠️ Avatar erro (${chatId}):`,
                 err.message
               );
-              profilePicCache.set(chatId, null);
             }
           }
 
