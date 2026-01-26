@@ -3,6 +3,9 @@ const { emitMessage } = require("../socket");
 const qrcode = require("qrcode");
 const { saveMedia } = require("../utils/mediaCache");
 
+const MAX_QR_ATTEMPTS = 5;
+const QR_EXPIRATION_MS = 2 * 60 * 1000;
+
 function getMessageType(msg) {
   if (!msg.hasMedia) return "chat";
   if (msg.type === "image") return "image";
@@ -74,12 +77,34 @@ function createWhatsAppClient(userId, options = {}) {
   let ready = false;
   let active = true;
   let invalidated = false;
+  let qrAttempts = 0;
+  let qrTimeoutId = null;
+
+  const clearQrTimeout = () => {
+    if (qrTimeoutId) {
+      clearTimeout(qrTimeoutId);
+      qrTimeoutId = null;
+    }
+  };
+
+  const scheduleQrTimeout = () => {
+    if (qrTimeoutId) return;
+    qrTimeoutId = setTimeout(() => {
+      if (ready || invalidated) return;
+      console.warn(
+        `[${userId}] QR Code expirado após ${QR_EXPIRATION_MS}ms`
+      );
+      qrCodeBase64 = null;
+      invalidate("qr_timeout");
+    }, QR_EXPIRATION_MS);
+  };
 
   const invalidate = (reason) => {
     if (invalidated) return;
     invalidated = true;
     ready = false;
     active = false;
+    clearQrTimeout();
     if (typeof onInvalidated === "function") {
       Promise.resolve(onInvalidated(reason)).catch((err) => {
         console.error(`[${userId}] Falha ao invalidar sessão`, err);
@@ -105,6 +130,17 @@ function createWhatsAppClient(userId, options = {}) {
   });
 
   client.on("qr", async (qr) => {
+    if (invalidated) return;
+    qrAttempts += 1;
+    if (qrAttempts > MAX_QR_ATTEMPTS) {
+      console.warn(
+        `[${userId}] Limite de tentativas de QR atingido (${MAX_QR_ATTEMPTS})`
+      );
+      qrCodeBase64 = null;
+      invalidate("qr_attempts_exceeded");
+      return;
+    }
+    scheduleQrTimeout();
     qrCodeBase64 = await qrcode.toDataURL(qr);
     ready = false;
     console.log(`[${userId}] QR Code gerado`);
@@ -115,6 +151,7 @@ function createWhatsAppClient(userId, options = {}) {
     ready = true;
     active = true;
     qrCodeBase64 = null;
+    clearQrTimeout();
     console.log(`[${userId}] WhatsApp conectado`);
   });
 
