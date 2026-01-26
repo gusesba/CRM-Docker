@@ -8,5 +8,6 @@ namespace Exemplo.Service.Queries
     {
         public string WhatsappChatId { get; set; } = string.Empty;
         public string WhatsappUserId { get; set; } = string.Empty;
+        public string Contato { get; set; } = string.Empty;
     }
 }

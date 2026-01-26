@@ -37,7 +37,7 @@ namespace Exemplo.Service.Handlers
                 };
             }
 
-            var phone = request.WhatsappChatId.Split('@')[0];
+            var phone = request.Contato;
 
             string Normalize(string input)
             {
