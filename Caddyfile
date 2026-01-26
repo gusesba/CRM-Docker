@@ -1,0 +1,7 @@
+api.autoescolasilva.com.br {
+  reverse_proxy crm-auto-escola-back:5000
+}
+
+wa.autoescolasilva.com.br {
+  reverse_proxy crm-auto-escola-whats:3001
+}

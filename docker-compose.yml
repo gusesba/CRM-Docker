@@ -1,8 +1,21 @@
 services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - crm-auto-escola-whats
+      - crm-auto-escola-back
+
   crm-auto-escola-whats:
     build: ./crm-auto-escola-whats
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     environment:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
       - WWEBJS_DATA_PATH=/data/.wwebjs_auth
@@ -24,7 +37,7 @@ services:
       - db
     command: >
       sh -c "
-      dotnet --info 
+      dotnet --info
       && dotnet tool install --global dotnet-ef --version 9.0.0
       && export PATH=\"$$PATH:/root/.dotnet/tools\"
       && dotnet restore CRM.API/CRM.API.csproj
@@ -49,3 +62,5 @@ volumes:
   db-data:
   wwebjs-data:
   whats-media:
+  caddy_data:
+  caddy_config:

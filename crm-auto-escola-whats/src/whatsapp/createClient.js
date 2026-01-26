@@ -124,6 +124,8 @@ function createWhatsAppClient(userId, options = {}) {
     puppeteer: {
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
       headless: true,
+      timeout: 240000,
+      protocolTimeout: 240000,
       args: ["--no-sandbox", "--disable-setuid-sandbox","--disable-dev-shm-usage",
     "--disable-gpu",],
     },
