@@ -19,10 +19,11 @@ services:
     environment:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
       - WWEBJS_DATA_PATH=/data/.wwebjs_auth
-    shm_size: "256mb"
+    shm_size: "512mb"
     volumes:
       - wwebjs-data:/data
       - whats-media:/app/src/media
+    restart: unless-stopped
 
   crm-auto-escola-back:
     image: mcr.microsoft.com/dotnet/sdk:9.0
@@ -43,9 +44,9 @@ services:
       && dotnet ef database update --project CRM.Persistence/CRM.Persistence.csproj --startup-project CRM.API/CRM.API.csproj
       && dotnet build CRM.API/CRM.API.csproj -v normal
       && dotnet run --project CRM.API/CRM.API.csproj --urls http://0.0.0.0:5000"
-    expose:
-      - "5000"
-
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
   db:
     image: postgres:16-alpine
     environment:
@@ -56,7 +57,7 @@ services:
       - "5431:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
-
+    restart: unless-stopped
 volumes:
   db-data:
   wwebjs-data:

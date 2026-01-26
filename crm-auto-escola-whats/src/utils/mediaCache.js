@@ -32,7 +32,13 @@ function saveMedia(media, messageId) {
 }
 
 function getCachedMedia(messageId) {
-  return CACHE.get(messageId) || null;
+  const cached = CACHE.get(messageId);
+  if (!cached) return null;
+  if (!fs.existsSync(cached.absolutePath)) {
+    CACHE.delete(messageId);
+    return null;
+  }
+  return cached;
 }
 
 module.exports = {
