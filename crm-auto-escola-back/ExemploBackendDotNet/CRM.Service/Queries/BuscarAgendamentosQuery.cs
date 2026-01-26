@@ -9,6 +9,7 @@ namespace Exemplo.Service.Queries
         public int? Id { get; set; }
 
         public int? VendaId { get; set; }
+        public int? VendedorId { get; set; }
         public string? Cliente { get; set; }
 
         public DateTime? DataAgendamentoDe { get; set; }

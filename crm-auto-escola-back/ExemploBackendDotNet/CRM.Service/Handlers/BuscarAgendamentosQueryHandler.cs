@@ -45,6 +45,9 @@ namespace Exemplo.Service.Handlers
             if (request.VendaId.HasValue)
                 query = query.Where(a => a.VendaId == request.VendaId.Value);
 
+            if (request.VendedorId.HasValue)
+                query = query.Where(a => a.Venda.VendedorId == request.VendedorId.Value);
+
             if (request.DataAgendamentoDe.HasValue)
                 query = query.Where(a => a.DataAgendamento >= request.DataAgendamentoDe.Value);
 
