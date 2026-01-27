@@ -44,8 +44,8 @@ services:
       && dotnet ef database update --project CRM.Persistence/CRM.Persistence.csproj --startup-project CRM.API/CRM.API.csproj
       && dotnet build CRM.API/CRM.API.csproj -v normal
       && dotnet run --project CRM.API/CRM.API.csproj --urls http://0.0.0.0:5000"
-    ports:
-      - "5000:5000"
+    expose:
+      - "5000"
     restart: unless-stopped
   db:
     image: postgres:16-alpine
