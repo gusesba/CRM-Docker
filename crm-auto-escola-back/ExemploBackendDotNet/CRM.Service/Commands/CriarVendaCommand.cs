@@ -24,5 +24,7 @@ namespace Exemplo.Service.Commands
         public string? Indicacao { get; set; }
         public string? Contrato { get; set; }
         public DateTime? DataNascimento { get; set; }
+        public DateTime? DataRetorno { get; set; }
+        public string? ObsRetorno { get; set; }
     }
 }

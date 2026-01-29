@@ -25,6 +25,9 @@ namespace Exemplo.Service.Handlers
             if (vendaExistente != null)
                 throw new ConflictException("Venda já cadastrada.");
 
+            if (!string.IsNullOrWhiteSpace(request.ObsRetorno) && request.DataRetorno == null)
+                throw new ConflictException("Data de retorno é obrigatória quando a observação de retorno é informada.");
+
             var novoVenda = new VendaModel()
             {
                 ComoConheceu = request.ComoConheceu,
@@ -50,6 +53,19 @@ namespace Exemplo.Service.Handlers
 
             var venda = await _context.Venda.AddAsync(novoVenda);
             await _context.SaveChangesAsync();
+
+            if (request.DataRetorno.HasValue)
+            {
+                var novoAgendamento = new AgendamentoModel
+                {
+                    VendaId = venda.Entity.Id,
+                    DataAgendamento = DateTime.SpecifyKind(request.DataRetorno.Value, DateTimeKind.Utc),
+                    Obs = request.ObsRetorno ?? string.Empty
+                };
+
+                await _context.Agendamento.AddAsync(novoAgendamento, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+            }
 
             return venda.Entity;
         }
