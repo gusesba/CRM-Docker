@@ -4,6 +4,7 @@
     {
         Presencialmente = 1,
         Fone = 2,
-        Email = 3
+        Site = 3,
+        RedesSociais = 4
     }
 }
