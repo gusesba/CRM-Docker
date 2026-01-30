@@ -209,6 +209,20 @@ router.get("/:userId/conversations", async (req, res) => {
             }
           }
 
+          let nmr = null;
+
+          if (chatId.endsWith("@lid")) {
+            const res = await session.client.getContactLidAndPhone([chatId]);
+
+            if (!res || res.length === 0) return null;
+
+            const { pn } = res[0];
+            if (!pn) return null;
+
+            // remove + e caracteres não numéricos
+            nmr = pn.replace(/\D/g, "");
+          }
+
           processed++;
           return {
             id: chatId,
@@ -222,6 +236,7 @@ router.get("/:userId/conversations", async (req, res) => {
                   timestamp: chat.lastMessage.timestamp,
                 }
               : null,
+            nmr,
           };
         })
       );
