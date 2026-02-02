@@ -3,6 +3,7 @@ using Exemplo.Domain.Model.Dto;
 using Exemplo.Domain.Settings;
 using Exemplo.Persistence;
 using Exemplo.Service.Queries;
+using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,15 +12,22 @@ namespace Exemplo.Service.Handlers
     public class BuscarSedesQueryHandler : IRequestHandler<BuscarSedesQuery, PagedResult<SedeModel>>
     {
         private readonly ExemploDbContext _context;
+        private readonly IUsuarioContextService _usuarioContextService;
 
-        public BuscarSedesQueryHandler(ExemploDbContext context)
+        public BuscarSedesQueryHandler(
+            ExemploDbContext context,
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<PagedResult<SedeModel>> Handle(BuscarSedesQuery request, CancellationToken cancellationToken)
         {
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
             IQueryable<SedeModel> query = _context.Sede;
+
+            query = query.ApplySedeFilter(access);
 
             if (!string.IsNullOrWhiteSpace(request.Nome))
             {

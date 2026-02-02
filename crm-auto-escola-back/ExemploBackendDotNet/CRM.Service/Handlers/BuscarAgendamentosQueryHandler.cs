@@ -2,6 +2,7 @@
 using Exemplo.Domain.Settings;
 using Exemplo.Persistence;
 using Exemplo.Service.Queries;
+using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,16 +12,21 @@ namespace Exemplo.Service.Handlers
         : IRequestHandler<BuscarAgendamentosQuery, PagedResult<AgendamentoModel>>
     {
         private readonly ExemploDbContext _context;
+        private readonly IUsuarioContextService _usuarioContextService;
 
-        public BuscarAgendamentosQueryHandler(ExemploDbContext context)
+        public BuscarAgendamentosQueryHandler(
+            ExemploDbContext context,
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<PagedResult<AgendamentoModel>> Handle(
             BuscarAgendamentosQuery request,
             CancellationToken cancellationToken)
         {
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
             // Garantir que as datas do request sejam UTC
             if (request.DataAgendamentoDe.HasValue)
                 request.DataAgendamentoDe = DateTime.SpecifyKind(request.DataAgendamentoDe.Value, DateTimeKind.Utc);
@@ -37,6 +43,8 @@ namespace Exemplo.Service.Handlers
                     .ThenInclude(v => v.Servico)
                 .Include(a => a.Venda)
                     .ThenInclude(v => v.CondicaoVenda);
+
+            query = query.ApplySedeFilter(access);
 
             // Filtros
             if (request.Id.HasValue)
