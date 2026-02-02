@@ -1,10 +1,18 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
+const path = require("path");
+const fs = require("fs");
 const { emitMessage } = require("../socket");
 const qrcode = require("qrcode");
 const { saveMedia } = require("../utils/mediaCache");
 
 const MAX_QR_ATTEMPTS = 5;
 const QR_EXPIRATION_MS = 2 * 60 * 1000;
+const DEFAULT_DATA_PATH = "/data/.wwebjs_auth";
+const PROFILE_LOCK_FILES = [
+  "SingletonLock",
+  "SingletonCookie",
+  "SingletonSocket",
+];
 
 function getMessageType(msg) {
   if (!msg.hasMedia) return "chat";
@@ -17,6 +25,22 @@ function getMessageType(msg) {
 
 function isStatusBroadcast(msg) {
   return msg.from === "status@broadcast" || msg.to === "status@broadcast";
+}
+
+function clearProfileLocks(profilePath, userId) {
+  try {
+    if (!profilePath) return;
+    fs.mkdirSync(profilePath, { recursive: true });
+    PROFILE_LOCK_FILES.forEach((fileName) => {
+      const lockPath = path.join(profilePath, fileName);
+      if (fs.existsSync(lockPath)) {
+        fs.rmSync(lockPath, { force: true });
+        console.warn(`[${userId}] Arquivo de lock removido: ${lockPath}`);
+      }
+    });
+  } catch (err) {
+    console.warn(`[${userId}] Falha ao limpar locks do Chrome`, err);
+  }
 }
 
 async function getChatName(msg) {
@@ -79,6 +103,10 @@ function createWhatsAppClient(userId, options = {}) {
   let invalidated = false;
   let qrAttempts = 0;
   let qrTimeoutId = null;
+  const dataPath = process.env.WWEBJS_DATA_PATH || DEFAULT_DATA_PATH;
+  const sessionPath = path.join(dataPath, `session-${userId}`);
+
+  clearProfileLocks(sessionPath, userId);
 
   const clearQrTimeout = () => {
     if (qrTimeoutId) {
@@ -119,10 +147,11 @@ function createWhatsAppClient(userId, options = {}) {
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId, // 🔥 chave do multi-usuário
-      dataPath: process.env.WWEBJS_DATA_PATH || "/data/.wwebjs_auth"
+      dataPath,
     }),
     puppeteer: {
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+      userDataDir: sessionPath,
       headless: true,
       timeout: 240000,
       protocolTimeout: 240000,
