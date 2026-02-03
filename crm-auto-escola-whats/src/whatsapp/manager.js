@@ -3,6 +3,7 @@ const fs = require("fs");
 const createWhatsAppClient = require("./createClient");
 
 const sessions = new Map();
+const DEFAULT_DATA_PATH = "/data/.wwebjs_auth";
 
 /**
  * Retorna sessão existente ou cria nova
@@ -41,7 +42,7 @@ async function removeSession(userId) {
   }
 
   const authPath = path.resolve(
-    "./.wwebjs_auth",
+    process.env.WWEBJS_DATA_PATH || DEFAULT_DATA_PATH,
     `session-${userId}`
   );
   await fs.promises.rm(authPath, {

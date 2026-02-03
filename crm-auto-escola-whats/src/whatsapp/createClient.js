@@ -1,10 +1,19 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
+const path = require("path");
+const fs = require("fs");
+const { execSync } = require("child_process");
 const { emitMessage } = require("../socket");
 const qrcode = require("qrcode");
 const { saveMedia } = require("../utils/mediaCache");
 
 const MAX_QR_ATTEMPTS = 5;
 const QR_EXPIRATION_MS = 2 * 60 * 1000;
+const DEFAULT_DATA_PATH = "/data/.wwebjs_auth";
+const PROFILE_LOCK_FILES = [
+  "SingletonLock",
+  "SingletonCookie",
+  "SingletonSocket",
+];
 
 function getMessageType(msg) {
   if (!msg.hasMedia) return "chat";
@@ -17,6 +26,67 @@ function getMessageType(msg) {
 
 function isStatusBroadcast(msg) {
   return msg.from === "status@broadcast" || msg.to === "status@broadcast";
+}
+
+function clearProfileLocks(profilePath, userId) {
+  try {
+    if (!profilePath) return;
+    fs.mkdirSync(profilePath, { recursive: true });
+    PROFILE_LOCK_FILES.forEach((fileName) => {
+      const lockPath = path.join(profilePath, fileName);
+      if (fs.existsSync(lockPath)) {
+        fs.rmSync(lockPath, { force: true });
+        console.warn(`[${userId}] Arquivo de lock removido: ${lockPath}`);
+      }
+    });
+  } catch (err) {
+    console.warn(`[${userId}] Falha ao limpar locks do Chrome`, err);
+  }
+}
+
+function terminateStaleChromeProcesses(profilePath, userId) {
+  try {
+    if (!profilePath) return;
+    const psOutput = execSync("ps -eo pid,args", { encoding: "utf8" });
+    const lines = psOutput.split("\n");
+    const pids = lines.reduce((acc, line) => {
+      const match = line.trim().match(/^(\d+)\s+(.*)$/);
+      if (!match) return acc;
+      const pid = Number(match[1]);
+      const args = match[2];
+      if (
+        Number.isFinite(pid) &&
+        args.includes(profilePath) &&
+        (args.includes("chrome") || args.includes("chromium"))
+      ) {
+        acc.push(pid);
+      }
+      return acc;
+    }, []);
+
+    if (pids.length === 0) return;
+    pids.forEach((pid) => {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch (err) {
+        console.warn(`[${userId}] Falha ao encerrar Chrome pid=${pid}`, err);
+      }
+    });
+    execSync("sleep 0.5");
+    pids.forEach((pid) => {
+      try {
+        process.kill(pid, 0);
+        process.kill(pid, "SIGKILL");
+      } catch (err) {
+        // Processo já finalizado ou sem permissão.
+      }
+    });
+    console.warn(
+      `[${userId}] Processos do Chrome encerrados para liberar o perfil`
+    );
+  } catch (err) {
+    console.warn(`[${userId}] Falha ao verificar processos do Chrome`, err);
+  }
 }
 
 async function getChatName(msg) {
@@ -79,6 +149,11 @@ function createWhatsAppClient(userId, options = {}) {
   let invalidated = false;
   let qrAttempts = 0;
   let qrTimeoutId = null;
+  const dataPath = process.env.WWEBJS_DATA_PATH || DEFAULT_DATA_PATH;
+  const sessionPath = path.join(dataPath, `session-${userId}`);
+
+  terminateStaleChromeProcesses(sessionPath, userId);
+  clearProfileLocks(sessionPath, userId);
 
   const clearQrTimeout = () => {
     if (qrTimeoutId) {
@@ -119,10 +194,11 @@ function createWhatsAppClient(userId, options = {}) {
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId, // 🔥 chave do multi-usuário
-      dataPath: process.env.WWEBJS_DATA_PATH || "/data/.wwebjs_auth"
+      dataPath,
     }),
     puppeteer: {
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+      userDataDir: sessionPath,
       headless: true,
       timeout: 240000,
       protocolTimeout: 240000,
