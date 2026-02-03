@@ -1,10 +1,9 @@
 ﻿using Exemplo.Domain.Model;
 using Exemplo.Domain.Settings;
 using Exemplo.Persistence;
-using Exemplo.Service.Exceptions;
 using Exemplo.Service.Queries;
+using Exemplo.Service.Security;
 using MediatR;
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace Exemplo.Service.Handlers
@@ -13,30 +12,21 @@ namespace Exemplo.Service.Handlers
         : IRequestHandler<BuscarVendasQuery, PagedResult<VendaModel>>
     {
         private readonly ExemploDbContext _context;
-        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IUsuarioContextService _usuarioContextService;
 
         public BuscarVendasQueryHandler(
             ExemploDbContext context,
-            IHttpContextAccessor httpContextAccessor)
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
-            _httpContextAccessor = httpContextAccessor;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<PagedResult<VendaModel>> Handle(
             BuscarVendasQuery request,
             CancellationToken cancellationToken)
         {
-            var userIdValue = _httpContextAccessor.HttpContext?.User?.FindFirst("UserId")?.Value;
-            if (!int.TryParse(userIdValue, out var userId))
-                throw new UnauthorizedException("Usuário não autenticado.");
-
-            var usuario = await _context.Usuario
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-
-            if (usuario == null)
-                throw new UnauthorizedException("Usuário não autenticado.");
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
 
             IQueryable<VendaModel> query = _context.Venda
                 .Include(v => v.Sede)
@@ -44,10 +34,7 @@ namespace Exemplo.Service.Handlers
                 .Include(v => v.Servico)
                 .Include(v => v.CondicaoVenda);
 
-            if (usuario.SedeId.HasValue)
-            {
-                query = query.Where(v => v.SedeId == usuario.SedeId.Value);
-            }
+            query = query.ApplySedeFilter(access);
 
             // Filtros
             if (request.Id.HasValue)

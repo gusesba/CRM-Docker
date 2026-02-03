@@ -2,6 +2,7 @@ using Exemplo.Domain.Model;
 using Exemplo.Domain.Model.Dto;
 using Exemplo.Persistence;
 using Exemplo.Service.Queries;
+using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,20 +11,27 @@ namespace Exemplo.Service.Handlers
     public class BuscarGruposWhatsappQueryHandler : IRequestHandler<BuscarGruposWhatsappQuery, List<GrupoWhatsappDto>>
     {
         private readonly ExemploDbContext _context;
+        private readonly IUsuarioContextService _usuarioContextService;
 
-        public BuscarGruposWhatsappQueryHandler(ExemploDbContext context)
+        public BuscarGruposWhatsappQueryHandler(
+            ExemploDbContext context,
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<List<GrupoWhatsappDto>> Handle(
             BuscarGruposWhatsappQuery request,
             CancellationToken cancellationToken)
         {
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
             IQueryable<GrupoWhatsappModel> query = _context.GrupoWhatsapp
                 .AsNoTracking()
                 .Include(g => g.GruposVendaWhatsapp)
                 .ThenInclude(gv => gv.VendaWhatsapp);
+
+            query = query.ApplySedeFilter(access);
 
             if (request.Id.HasValue)
             {

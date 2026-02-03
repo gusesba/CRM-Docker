@@ -1,6 +1,7 @@
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Exceptions;
+using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,16 +11,21 @@ namespace Exemplo.Service.Handlers
         : IRequestHandler<TransferirVendasCommand, Unit>
     {
         private readonly ExemploDbContext _context;
+        private readonly IUsuarioContextService _usuarioContextService;
 
-        public TransferirVendasCommandHandler(ExemploDbContext context)
+        public TransferirVendasCommandHandler(
+            ExemploDbContext context,
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<Unit> Handle(
             TransferirVendasCommand request,
             CancellationToken cancellationToken)
         {
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
             if (request.VendasIds == null || !request.VendasIds.Any())
                 throw new ValidationException("Nenhuma venda foi selecionada para transferência.");
 
@@ -34,6 +40,8 @@ namespace Exemplo.Service.Handlers
             // Atualizar vendedor das vendas
             foreach (var venda in vendas)
             {
+                access.EnsureSameSede(venda.SedeId, "Venda não pertence à sua sede.");
+
                 //  Ajuste o nome da propriedade conforme seu Model
                 venda.VendedorAtualId = request.UsuarioId;
                 if (request.Permanente)
