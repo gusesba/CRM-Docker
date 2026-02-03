@@ -3,6 +3,7 @@ using Exemplo.Domain.Model.Enum;
 using Exemplo.Persistence;
 using Exemplo.Service.Queries;
 using Exemplo.Service.Exceptions;
+using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,10 +12,14 @@ namespace Exemplo.Service.Handlers
     public class DashboardQueryHandler : IRequestHandler<DashboardQuery, DashboardDto>
     {
         private readonly ExemploDbContext _context;
+        private readonly IUsuarioContextService _usuarioContextService;
 
-        public DashboardQueryHandler(ExemploDbContext context)
+        public DashboardQueryHandler(
+            ExemploDbContext context,
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<DashboardDto> Handle(
@@ -22,6 +27,7 @@ namespace Exemplo.Service.Handlers
     CancellationToken cancellationToken
 )
         {
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
             // ==========================
             // QUERY BASE (SEM VENDEDOR)
             // ==========================
@@ -29,6 +35,8 @@ namespace Exemplo.Service.Handlers
                 .AsNoTracking()
                 .Include(v => v.Vendedor)
                 .AsQueryable();
+
+            vendasBaseQuery = vendasBaseQuery.ApplySedeFilter(access);
 
             if (request.DataInicial == default || request.DataFinal == default)
                 throw new ValidationException("Período é obrigatório para o dashboard.");

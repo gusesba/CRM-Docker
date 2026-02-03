@@ -3,6 +3,7 @@ using Exemplo.Domain.Model.Dto;
 using Exemplo.Domain.Model.Enum;
 using Exemplo.Persistence;
 using Exemplo.Service.Queries;
+using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,10 +12,14 @@ namespace Exemplo.Service.Handlers
     public class GetVendaByWhatsappQueryHandler : IRequestHandler<GetVendaByWhatsappQuery, ChatStatusDto>
     {
         private readonly ExemploDbContext _context;
+        private readonly IUsuarioContextService _usuarioContextService;
 
-        public GetVendaByWhatsappQueryHandler(ExemploDbContext context)
+        public GetVendaByWhatsappQueryHandler(
+            ExemploDbContext context,
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<ChatStatusDto> Handle(
@@ -22,11 +27,13 @@ namespace Exemplo.Service.Handlers
             CancellationToken cancellationToken
         )
         {
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
             var vinculada = await _context.VendaWhatsapp
             .Include(x => x.Venda)
             .FirstOrDefaultAsync(x =>
                 x.WhatsappChatId == request.WhatsappChatId &&
-                x.WhatsappUserId == request.WhatsappUserId,
+                x.WhatsappUserId == request.WhatsappUserId &&
+                (access.AllowAll || !access.SedeId.HasValue || x.Venda.SedeId == access.SedeId.Value),
                 cancellationToken);
 
             if (vinculada != null)
@@ -63,10 +70,12 @@ namespace Exemplo.Service.Handlers
 
             var phoneWithout9 = RemoveNinthDigitAfterDDD(normalizedPhone);
 
-            var vendas = await _context.Venda
+            var vendasQuery = _context.Venda
                 .AsNoTracking()
                 .Where(v => v.Contato != null)
-                .ToListAsync(cancellationToken);
+                .ApplySedeFilter(access);
+
+            var vendas = await vendasQuery.ToListAsync(cancellationToken);
 
 
             var venda = vendas.FirstOrDefault(v =>

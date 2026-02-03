@@ -2,6 +2,7 @@
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Exceptions;
+using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,26 +11,38 @@ namespace Exemplo.Service.Handlers
     public class EditarVendaCommandHandler : IRequestHandler<EditarVendaCommand, VendaModel>
     {
         private readonly ExemploDbContext _context;
+        private readonly IUsuarioContextService _usuarioContextService;
 
-        public EditarVendaCommandHandler(ExemploDbContext context)
+        public EditarVendaCommandHandler(
+            ExemploDbContext context,
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<VendaModel> Handle(EditarVendaCommand request, CancellationToken cancellationToken)
         {
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
             var venda = await _context.Venda
                 .FirstOrDefaultAsync(v => v.Id == request.Id, cancellationToken);
 
             if (venda == null)
                 throw new NotFoundException("Venda não encontrada.");
 
+            access.EnsureSameSede(venda.SedeId, "Venda não pertence à sua sede.");
+
+            if (request.SedeId.HasValue)
+            {
+                access.EnsureSameSede(request.SedeId, "Não é permitido alterar a sede da venda.");
+                venda.SedeId = request.SedeId;
+            }
+
             venda.ComoConheceu = request.ComoConheceu;
             venda.VendedorId = request.VendedorId;
             venda.ValorVenda = request.ValorVenda;
             venda.Status = request.Status;
             venda.ServicoId = request.ServicoId;
-            venda.SedeId = request.SedeId;
             venda.Origem = request.Origem;
             venda.Obs = request.Obs;
             venda.CondicaoVendaId = request.CondicaoVendaId;
