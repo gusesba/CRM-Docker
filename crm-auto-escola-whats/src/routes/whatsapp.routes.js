@@ -237,6 +237,7 @@ router.get("/:userId/conversations", async (req, res) => {
                 }
               : null,
             nmr,
+            archived: chat.archived || false,
           };
         })
       );
