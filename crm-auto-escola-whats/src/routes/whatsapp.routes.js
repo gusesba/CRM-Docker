@@ -81,6 +81,63 @@ function normalizeBase64(data) {
   return data;
 }
 
+function normalizePhoneDigits(value) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const digits = String(value).replace(/\D/g, "");
+  return digits.length > 0 ? digits : null;
+}
+
+function ensureCountryCode(digits) {
+  if (!digits) return null;
+  return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
+function buildWhatsappCandidates(digits) {
+  if (!digits) return [];
+  const sanitized = ensureCountryCode(digits);
+  if (!sanitized) return [];
+  const local = sanitized.slice(2);
+  const candidates = [];
+  const addCandidate = (value) => {
+    if (!value) return;
+    if (!candidates.includes(value)) {
+      candidates.push(value);
+    }
+  };
+
+  let primary = sanitized;
+  if (local.length === 10) {
+    primary = `55${local.slice(0, 2)}9${local.slice(2)}`;
+  }
+
+  addCandidate(primary);
+
+  if (local.length === 11) {
+    addCandidate(`55${local.slice(0, 2)}${local.slice(3)}`);
+  } else if (local.length === 10) {
+    addCandidate(sanitized);
+  }
+
+  return candidates;
+}
+
+async function resolveWhatsappId(client, digits) {
+  if (!client || !digits) return null;
+  if (typeof client.getNumberId === "function") {
+    const numberId = await client.getNumberId(digits);
+    if (numberId?._serialized) {
+      return numberId._serialized;
+    }
+  }
+  if (typeof client.isRegisteredUser === "function") {
+    const exists = await client.isRegisteredUser(digits);
+    if (exists) {
+      return `${digits}@c.us`;
+    }
+  }
+  return null;
+}
+
 function applyTemplate(text, params = {}) {
   if (typeof text !== "string") return text;
   if (!params || typeof params !== "object") return text;
@@ -89,6 +146,60 @@ function applyTemplate(text, params = {}) {
     if (value === undefined || value === null) return match;
     return String(value);
   });
+}
+
+async function buildChatResponse(chat, userId, session, lastMessageOverride = null) {
+  const chatId = chat.id._serialized;
+  let profilePicUrl = getProfileImageUrlFromDisk(userId, chatId);
+
+  if (!profilePicUrl) {
+    try {
+      const remoteUrl = await withTimeout(
+        session.client.getProfilePicUrl(chatId),
+        3000,
+        null
+      );
+
+      profilePicUrl = await saveProfileImageFromUrl(
+        userId,
+        chatId,
+        remoteUrl
+      );
+    } catch (err) {
+      console.error(`[${userId}] ⚠️ Avatar erro (${chatId}):`, err.message);
+    }
+  }
+
+  let nmr = null;
+
+  if (chatId.endsWith("@lid")) {
+    const res = await session.client.getContactLidAndPhone([chatId]);
+
+    if (res && res.length > 0) {
+      const { pn } = res[0];
+      if (pn) {
+        nmr = pn.replace(/\D/g, "");
+      }
+    }
+  }
+
+  const lastMessageSource = lastMessageOverride || chat.lastMessage;
+
+  return {
+    id: chatId,
+    name: chat.name || chat.id.user,
+    isGroup: chat.isGroup,
+    unreadCount: chat.unreadCount ?? 0,
+    profilePicUrl,
+    lastMessage: lastMessageSource
+      ? {
+          body: lastMessageSource.body,
+          timestamp: lastMessageSource.timestamp,
+        }
+      : null,
+    nmr,
+    archived: chat.archived || false,
+  };
 }
 
 const router = express.Router();
@@ -534,6 +645,67 @@ router.post("/:userId/messages/batch", async (req, res) => {
   }
   const success = results.every((result) => result.errors.length === 0);
   return res.json({ success, results });
+});
+
+router.post("/:userId/messages/number", async (req, res) => {
+  const { userId } = req.params;
+  const { number, message } = req.body;
+
+  const session = getSession(userId);
+
+  if (!session || !session.isReady()) {
+    return res.status(401).json({ error: "WhatsApp não conectado" });
+  }
+
+  if (!message) {
+    return res.status(400).json({ error: "Mensagem inválida" });
+  }
+
+  const digits = normalizePhoneDigits(number);
+  if (!digits) {
+    return res.status(400).json({ error: "Número inválido" });
+  }
+
+  const candidates = buildWhatsappCandidates(digits);
+  if (candidates.length === 0) {
+    return res.status(400).json({ error: "Número inválido" });
+  }
+
+  try {
+    let resolvedId = null;
+    let resolvedDigits = null;
+
+    for (const candidate of candidates) {
+      const chatId = await resolveWhatsappId(session.client, candidate);
+      if (chatId) {
+        resolvedId = chatId;
+        resolvedDigits = candidate;
+        break;
+      }
+    }
+
+    if (!resolvedId) {
+      return res.status(404).json({ error: "Número não existe no WhatsApp" });
+    }
+
+    const sentMsg = await session.client.sendMessage(resolvedId, message, {
+      sendSeen: false
+    });
+
+    const chat = await session.client.getChatById(resolvedId);
+    const chatResponse = chat
+      ? await buildChatResponse(chat, userId, session, sentMsg)
+      : null;
+
+    return res.json({
+      success: true,
+      chat: chatResponse,
+      normalizedNumber: resolvedDigits
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao enviar mensagem" });
+  }
 });
 
 
