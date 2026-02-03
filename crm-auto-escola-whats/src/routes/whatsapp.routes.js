@@ -708,6 +708,44 @@ router.post("/:userId/messages/number", async (req, res) => {
   }
 });
 
+router.post("/:userId/arquivar", async (req, res) => {
+  const { userId } = req.params;
+  const { chatId, arquivar } = req.body;
+
+  const session = getSession(userId);
+
+  if (!session || !session.isReady()) {
+    return res.status(401).json({ error: "WhatsApp não conectado" });
+  }
+
+  if (!chatId || typeof chatId !== "string") {
+    return res.status(400).json({ error: "Chat inválido" });
+  }
+
+  if (typeof arquivar !== "boolean") {
+    return res.status(400).json({ error: "Valor de arquivar inválido" });
+  }
+
+  try {
+    const chat = await session.client.getChatById(chatId);
+
+    if (!chat) {
+      return res.status(404).json({ error: "Chat não encontrado" });
+    }
+
+    if (arquivar) {
+      await chat.archive();
+    } else {
+      await chat.unarchive();
+    }
+
+    return res.json({ success: true, archived: arquivar });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao atualizar conversa" });
+  }
+});
+
 
 
 router.post("/:userId/messages/:chatId", async (req, res) => {
