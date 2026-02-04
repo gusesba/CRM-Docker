@@ -777,13 +777,21 @@ router.post("/:userId/addressbook/contact", async (req, res) => {
   }
 
   const normalizedNumber = ensureCountryCode(digits);
+  const normalizedFirstName = firstName.trim();
+  const normalizedLastName =
+    typeof lastName === "string" ? lastName.trim() : "";
+  const shouldSyncToAddressbook = Boolean(syncToAddressbook);
+
+  if (!normalizedFirstName) {
+    return res.status(400).json({ error: "Nome inválido" });
+  }
 
   try {
     const result = await session.client.saveOrEditAddressbookContact(
       normalizedNumber,
-      firstName,
-      lastName,
-      syncToAddressbook
+      normalizedFirstName,
+      normalizedLastName,
+      shouldSyncToAddressbook
     );
 
     return res.json({ success: true, result, normalizedNumber });
