@@ -748,7 +748,7 @@ router.post("/:userId/arquivar", async (req, res) => {
 
 router.post("/:userId/addressbook/contact", async (req, res) => {
   const { userId } = req.params;
-  const { phoneNumber, firstName, lastName, syncToAddressbook } = req.body;
+  const { phoneNumber, firstName, lastName } = req.body;
 
   const session = getSession(userId);
 
@@ -761,8 +761,7 @@ router.post("/:userId/addressbook/contact", async (req, res) => {
       phoneNumber,
       firstName,
       lastName,
-      syncToAddressbook === true
-    );
+      true);
 
     return res.json({ success: true, result, phoneNumber });
   } catch (err) {
