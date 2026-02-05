@@ -746,6 +746,30 @@ router.post("/:userId/arquivar", async (req, res) => {
   }
 });
 
+router.post("/:userId/addressbook/contact", async (req, res) => {
+  const { userId } = req.params;
+  const { phoneNumber, firstName, lastName } = req.body;
+
+  const session = getSession(userId);
+
+  if (!session || !session.isReady()) {
+    return res.status(401).json({ error: "WhatsApp não conectado" });
+  }
+
+  try {
+    const result = await session.client.saveOrEditAddressbookContact(
+      phoneNumber,
+      firstName,
+      lastName,
+      true);
+
+    return res.json({ success: true, result, phoneNumber });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao salvar contato" });
+  }
+});
+
 
 
 router.post("/:userId/messages/:chatId", async (req, res) => {
