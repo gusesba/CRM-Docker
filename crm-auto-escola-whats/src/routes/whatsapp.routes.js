@@ -756,45 +756,15 @@ router.post("/:userId/addressbook/contact", async (req, res) => {
     return res.status(401).json({ error: "WhatsApp não conectado" });
   }
 
-  const digits = normalizePhoneDigits(phoneNumber);
-  if (!digits) {
-    return res.status(400).json({ error: "Número inválido" });
-  }
-
-  if (!firstName || typeof firstName !== "string") {
-    return res.status(400).json({ error: "Nome inválido" });
-  }
-
-  if (lastName !== undefined && typeof lastName !== "string") {
-    return res.status(400).json({ error: "Sobrenome inválido" });
-  }
-
-  if (
-    syncToAddressbook !== undefined &&
-    typeof syncToAddressbook !== "boolean"
-  ) {
-    return res.status(400).json({ error: "Sync inválido" });
-  }
-
-  const normalizedNumber = ensureCountryCode(digits);
-  const normalizedFirstName = firstName.trim();
-  const normalizedLastName =
-    typeof lastName === "string" ? lastName.trim() : "";
-  const shouldSyncToAddressbook = Boolean(syncToAddressbook);
-
-  if (!normalizedFirstName) {
-    return res.status(400).json({ error: "Nome inválido" });
-  }
-
   try {
     const result = await session.client.saveOrEditAddressbookContact(
-      normalizedNumber,
-      normalizedFirstName,
-      normalizedLastName,
-      shouldSyncToAddressbook
+      phoneNumber,
+      firstName,
+      lastName,
+      syncToAddressbook === true
     );
 
-    return res.json({ success: true, result, normalizedNumber });
+    return res.json({ success: true, result, phoneNumber });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Erro ao salvar contato" });
