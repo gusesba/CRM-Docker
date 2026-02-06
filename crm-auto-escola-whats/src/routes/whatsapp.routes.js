@@ -490,6 +490,46 @@ router.patch("/:userId/messages/:messageId", async (req, res) => {
   }
 });
 
+router.delete("/:userId/messages/:messageId", async (req, res) => {
+  const { userId, messageId } = req.params;
+  const forEveryone =
+    req.query.forEveryone === "true" || req.body?.forEveryone === true;
+
+  const session = getSession(userId);
+  if (!session || !session.isReady()) {
+    return res.status(401).json({ error: "WhatsApp não conectado" });
+  }
+
+  try {
+    const msg = await session.client.getMessageById(messageId);
+
+    if (!msg) {
+      return res.status(404).json({ error: "Mensagem não encontrada" });
+    }
+
+    const deleted = await msg.delete(forEveryone);
+
+    if (!deleted) {
+      return res.status(400).json({
+        success: false,
+        error: "Mensagem não pode ser excluída",
+      });
+    }
+
+    return res.json({
+      success: true,
+      messageId: msg.id._serialized,
+      forEveryone,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      error: "Erro ao excluir mensagem",
+    });
+  }
+});
+
 router.post("/:userId/messages/batch", async (req, res) => {
   const { userId } = req.params;
   const {
