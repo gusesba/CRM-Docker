@@ -507,14 +507,8 @@ router.delete("/:userId/messages/:messageId", async (req, res) => {
       return res.status(404).json({ error: "Mensagem não encontrada" });
     }
 
-    const deleted = await msg.delete(forEveryone);
-
-    if (!deleted) {
-      return res.status(400).json({
-        success: false,
-        error: "Mensagem não pode ser excluída",
-      });
-    }
+    // Não retorna boolean: se não deu erro, assume sucesso
+    await msg.delete(forEveryone);
 
     return res.json({
       success: true,
@@ -529,6 +523,7 @@ router.delete("/:userId/messages/:messageId", async (req, res) => {
     });
   }
 });
+
 
 router.post("/:userId/messages/batch", async (req, res) => {
   const { userId } = req.params;
