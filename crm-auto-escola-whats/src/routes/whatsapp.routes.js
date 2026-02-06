@@ -447,6 +447,49 @@ router.get("/:userId/messages/:messageId/media", async (req, res) => {
   }
 });
 
+router.patch("/:userId/messages/:messageId", async (req, res) => {
+  const { userId, messageId } = req.params;
+  const { message } = req.body;
+
+  const session = getSession(userId);
+  if (!session || !session.isReady()) {
+    return res.status(401).json({ error: "WhatsApp não conectado" });
+  }
+
+  if (typeof message !== "string" || message.trim() === "") {
+    return res.status(400).json({ error: "Mensagem inválida" });
+  }
+
+  try {
+    const msg = await session.client.getMessageById(messageId);
+
+    if (!msg) {
+      return res.status(404).json({ error: "Mensagem não encontrada" });
+    }
+
+    const edited = await msg.edit(message);
+
+    if (!edited) {
+      return res.status(400).json({
+        success: false,
+        error: "Mensagem não pode ser editada",
+      });
+    }
+
+    return res.json({
+      success: true,
+      messageId: edited.id._serialized,
+      body: edited.body,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      error: "Erro ao editar mensagem",
+    });
+  }
+});
+
 router.post("/:userId/messages/batch", async (req, res) => {
   const { userId } = req.params;
   const {
