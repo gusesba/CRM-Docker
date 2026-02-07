@@ -62,7 +62,7 @@ async function sendBackupMessage(payload) {
     if (!response.ok) {
       const responseText = await response.text().catch(() => "");
       console.error(
-        `Falha ao enviar backup (${response.status}). ${responseText}`
+        `Falha ao enviar backup (${response.status}). ${responseText}`,
       );
     }
   } catch (err) {
@@ -70,6 +70,46 @@ async function sendBackupMessage(payload) {
   }
 }
 
+async function buildQuotedMessage(msg, userId) {
+  if (!msg.hasQuotedMsg) return null;
+  try {
+    const quoted = await msg.getQuotedMessage();
+    if (!quoted) return null;
+    return {
+      id: quoted.id._serialized,
+      body: quoted.body,
+      fromMe: quoted.fromMe,
+      timestamp: quoted.timestamp,
+      type: getMessageType(quoted),
+      hasMedia: quoted.hasMedia,
+      mediaUrl: quoted.hasMedia
+        ? `/whatsapp/${userId}/messages/${quoted.id._serialized}/media`
+        : null,
+      author: quoted.author || null,
+    };
+  } catch (err) {
+    console.warn("Falha ao obter mensagem respondida", err);
+    return null;
+  }
+}
+
+async function buildMessagePayload(msg, userId) {
+  const replyTo = await buildQuotedMessage(msg, userId);
+  return {
+    id: msg.id._serialized,
+    body: msg.body,
+    fromMe: msg.fromMe,
+    timestamp: msg.timestamp,
+    type: getMessageType(msg),
+    hasMedia: msg.hasMedia,
+    mediaUrl: msg.hasMedia
+      ? `/whatsapp/${userId}/messages/${msg.id._serialized}/media`
+      : null,
+    author: msg.author || null,
+    isForwarded: Boolean(msg.isForwarded),
+    replyTo,
+  };
+}
 
 function createWhatsAppClient(userId, options = {}) {
   const { onInvalidated } = options;
@@ -91,9 +131,7 @@ function createWhatsAppClient(userId, options = {}) {
     if (qrTimeoutId) return;
     qrTimeoutId = setTimeout(() => {
       if (ready || invalidated) return;
-      console.warn(
-        `[${userId}] QR Code expirado após ${QR_EXPIRATION_MS}ms`
-      );
+      console.warn(`[${userId}] QR Code expirado após ${QR_EXPIRATION_MS}ms`);
       qrCodeBase64 = null;
       invalidate("qr_timeout");
     }, QR_EXPIRATION_MS);
@@ -119,15 +157,19 @@ function createWhatsAppClient(userId, options = {}) {
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId, // 🔥 chave do multi-usuário
-      dataPath: process.env.WWEBJS_DATA_PATH || "/data/.wwebjs_auth"
+      dataPath: process.env.WWEBJS_DATA_PATH || "/data/.wwebjs_auth",
     }),
     puppeteer: {
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
       headless: true,
       timeout: 240000,
       protocolTimeout: 240000,
-      args: ["--no-sandbox", "--disable-setuid-sandbox","--disable-dev-shm-usage",
-    "--disable-gpu",],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
     },
   });
 
@@ -136,7 +178,7 @@ function createWhatsAppClient(userId, options = {}) {
     qrAttempts += 1;
     if (qrAttempts > MAX_QR_ATTEMPTS) {
       console.warn(
-        `[${userId}] Limite de tentativas de QR atingido (${MAX_QR_ATTEMPTS})`
+        `[${userId}] Limite de tentativas de QR atingido (${MAX_QR_ATTEMPTS})`,
       );
       qrCodeBase64 = null;
       invalidate("qr_attempts_exceeded");
@@ -159,10 +201,10 @@ function createWhatsAppClient(userId, options = {}) {
 
   client.on("authenticated", () => console.log(`[${userId}] authenticated`));
   client.on("loading_screen", (percent, msg) =>
-    console.log(`[${userId}] loading ${percent}% ${msg}`)
+    console.log(`[${userId}] loading ${percent}% ${msg}`),
   );
   client.on("change_state", (state) =>
-    console.log(`[${userId}] state: ${state}`)
+    console.log(`[${userId}] state: ${state}`),
   );
 
   client.on("auth_failure", (msg) => {
@@ -182,85 +224,39 @@ function createWhatsAppClient(userId, options = {}) {
     if (isStatusBroadcast(msg)) return;
     console.log("Mensagem enviada");
 
-    let mediaUrl = null;
-    if (msg.hasMedia) {
-    // ⚠️ você NÃO deve mandar base64 pelo socket
-      // Salve em disco / S3 / CDN
-      mediaUrl = `/whatsapp/${userId}/messages/${msg.id._serialized}/media`;
-    }
-
     const chatName = await getChatName(msg);
-  
+    const messagePayload = await buildMessagePayload(msg, userId);
+
     emitMessage(userId, {
       chatId: msg.to,
-      message: {
-        id: msg.id._serialized,
-        body: msg.body,
-        fromMe: true,
-        timestamp: msg.timestamp,
-        type: getMessageType(msg),
-        hasMedia: msg.hasMedia,
-        mediaUrl,
-      },
+      message: messagePayload,
     });
 
     await sendBackupMessage({
       userId,
       chatId: msg.to,
       chatName,
-      message: {
-        id: msg.id._serialized,
-        body: msg.body,
-        fromMe: true,
-        timestamp: msg.timestamp,
-        type: getMessageType(msg),
-        hasMedia: msg.hasMedia,
-        mediaUrl,
-      },
+      message: messagePayload,
     });
   });
 
-  client.on("message", async (msg) => {    
+  client.on("message", async (msg) => {
     if (isStatusBroadcast(msg)) return;
     console.log("Nova mensagem recebida");
 
-    let mediaUrl = null;
-
-    if (msg.hasMedia) {
-
-      // ⚠️ você NÃO deve mandar base64 pelo socket
-      // Salve em disco / S3 / CDN
-      mediaUrl = `/whatsapp/${userId}/messages/${msg.id._serialized}/media`;
-    }
-
     const chatName = await getChatName(msg);
+    const messagePayload = await buildMessagePayload(msg, userId);
 
     emitMessage(userId, {
       chatId: msg.from,
-      message: {
-        id: msg.id._serialized,
-        body: msg.body,
-        fromMe: false,
-        timestamp: msg.timestamp,
-        type: getMessageType(msg),
-        hasMedia: msg.hasMedia,
-        mediaUrl,
-      },
+      message: messagePayload,
     });
 
     await sendBackupMessage({
       userId,
       chatId: msg.from,
       chatName,
-      message: {
-        id: msg.id._serialized,
-        body: msg.body,
-        fromMe: false,
-        timestamp: msg.timestamp,
-        type: getMessageType(msg),
-        hasMedia: msg.hasMedia,
-        mediaUrl,
-      },
+      message: messagePayload,
     });
   });
 
