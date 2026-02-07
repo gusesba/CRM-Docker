@@ -64,6 +64,48 @@ function getMessageType(msg) {
   return "document";
 }
 
+async function buildQuotedMessageResponse(msg, userId) {
+  if (!msg.hasQuotedMsg) return null;
+  try {
+    const quoted = await msg.getQuotedMessage();
+    if (!quoted) return null;
+    return {
+      id: quoted.id._serialized,
+      body: quoted.body,
+      fromMe: quoted.fromMe,
+      timestamp: quoted.timestamp,
+      type: getMessageType(quoted),
+      hasMedia: quoted.hasMedia,
+      mediaUrl: quoted.hasMedia
+        ? `/whatsapp/${userId}/messages/${quoted.id._serialized}/media`
+        : null,
+      author: quoted.author || null,
+    };
+  } catch (err) {
+    console.warn("Falha ao obter mensagem respondida", err);
+    return null;
+  }
+}
+
+async function buildMessageResponse(msg, userId) {
+  const replyTo = await buildQuotedMessageResponse(msg, userId);
+  return {
+    id: msg.id._serialized,
+    body: msg.body,
+    fromMe: msg.fromMe,
+    timestamp: msg.timestamp,
+    type: getMessageType(msg),
+    hasMedia: msg.hasMedia,
+    mediaUrl: msg.hasMedia
+      ? `/whatsapp/${userId}/messages/${msg.id._serialized}/media`
+      : null,
+    author: msg.author || null,
+    isEdited: Boolean(msg.isEdited),
+    isForwarded: Boolean(msg.isForwarded),
+    replyTo,
+  };
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -391,18 +433,9 @@ router.get("/:userId/messages/:chatId", async (req, res) => {
 
     const messages = await chat.fetchMessages({ limit });
 
-    const result = messages.map((msg) => ({
-      id: msg.id._serialized,
-      body: msg.body,
-      fromMe: msg.fromMe,
-      timestamp: msg.timestamp,
-      type: getMessageType(msg),
-      hasMedia: msg.hasMedia,
-      mediaUrl: msg.hasMedia
-        ? `/whatsapp/${userId}/messages/${msg.id._serialized}/media`
-        : null,
-      author: msg.author || null,
-    }));
+    const result = await Promise.all(
+      messages.map((msg) => buildMessageResponse(msg, userId))
+    );
 
     res.json(result);
   } catch (err) {

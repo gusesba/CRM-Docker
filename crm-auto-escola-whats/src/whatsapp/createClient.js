@@ -70,6 +70,47 @@ async function sendBackupMessage(payload) {
   }
 }
 
+async function buildQuotedMessage(msg, userId) {
+  if (!msg.hasQuotedMsg) return null;
+  try {
+    const quoted = await msg.getQuotedMessage();
+    if (!quoted) return null;
+    return {
+      id: quoted.id._serialized,
+      body: quoted.body,
+      fromMe: quoted.fromMe,
+      timestamp: quoted.timestamp,
+      type: getMessageType(quoted),
+      hasMedia: quoted.hasMedia,
+      mediaUrl: quoted.hasMedia
+        ? `/whatsapp/${userId}/messages/${quoted.id._serialized}/media`
+        : null,
+      author: quoted.author || null,
+    };
+  } catch (err) {
+    console.warn("Falha ao obter mensagem respondida", err);
+    return null;
+  }
+}
+
+async function buildMessagePayload(msg, userId) {
+  const replyTo = await buildQuotedMessage(msg, userId);
+  return {
+    id: msg.id._serialized,
+    body: msg.body,
+    fromMe: msg.fromMe,
+    timestamp: msg.timestamp,
+    type: getMessageType(msg),
+    hasMedia: msg.hasMedia,
+    mediaUrl: msg.hasMedia
+      ? `/whatsapp/${userId}/messages/${msg.id._serialized}/media`
+      : null,
+    author: msg.author || null,
+    isEdited: Boolean(msg.isEdited),
+    isForwarded: Boolean(msg.isForwarded),
+    replyTo,
+  };
+}
 
 function createWhatsAppClient(userId, options = {}) {
   const { onInvalidated } = options;
@@ -182,41 +223,19 @@ function createWhatsAppClient(userId, options = {}) {
     if (isStatusBroadcast(msg)) return;
     console.log("Mensagem enviada");
 
-    let mediaUrl = null;
-    if (msg.hasMedia) {
-    // ⚠️ você NÃO deve mandar base64 pelo socket
-      // Salve em disco / S3 / CDN
-      mediaUrl = `/whatsapp/${userId}/messages/${msg.id._serialized}/media`;
-    }
-
     const chatName = await getChatName(msg);
+    const messagePayload = await buildMessagePayload(msg, userId);
   
     emitMessage(userId, {
       chatId: msg.to,
-      message: {
-        id: msg.id._serialized,
-        body: msg.body,
-        fromMe: true,
-        timestamp: msg.timestamp,
-        type: getMessageType(msg),
-        hasMedia: msg.hasMedia,
-        mediaUrl,
-      },
+      message: messagePayload,
     });
 
     await sendBackupMessage({
       userId,
       chatId: msg.to,
       chatName,
-      message: {
-        id: msg.id._serialized,
-        body: msg.body,
-        fromMe: true,
-        timestamp: msg.timestamp,
-        type: getMessageType(msg),
-        hasMedia: msg.hasMedia,
-        mediaUrl,
-      },
+      message: messagePayload,
     });
   });
 
@@ -224,43 +243,19 @@ function createWhatsAppClient(userId, options = {}) {
     if (isStatusBroadcast(msg)) return;
     console.log("Nova mensagem recebida");
 
-    let mediaUrl = null;
-
-    if (msg.hasMedia) {
-
-      // ⚠️ você NÃO deve mandar base64 pelo socket
-      // Salve em disco / S3 / CDN
-      mediaUrl = `/whatsapp/${userId}/messages/${msg.id._serialized}/media`;
-    }
-
     const chatName = await getChatName(msg);
+    const messagePayload = await buildMessagePayload(msg, userId);
 
     emitMessage(userId, {
       chatId: msg.from,
-      message: {
-        id: msg.id._serialized,
-        body: msg.body,
-        fromMe: false,
-        timestamp: msg.timestamp,
-        type: getMessageType(msg),
-        hasMedia: msg.hasMedia,
-        mediaUrl,
-      },
+      message: messagePayload,
     });
 
     await sendBackupMessage({
       userId,
       chatId: msg.from,
       chatName,
-      message: {
-        id: msg.id._serialized,
-        body: msg.body,
-        fromMe: false,
-        timestamp: msg.timestamp,
-        type: getMessageType(msg),
-        hasMedia: msg.hasMedia,
-        mediaUrl,
-      },
+      message: messagePayload,
     });
   });
 
