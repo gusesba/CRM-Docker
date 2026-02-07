@@ -786,6 +786,43 @@ router.post("/:userId/messages/number", async (req, res) => {
   }
 });
 
+router.post("/:userId/messages/:messageId/reply", async (req, res) => {
+  const { userId, messageId } = req.params;
+  const { message } = req.body;
+
+  const session = getSession(userId);
+
+  if (!session || !session.isReady()) {
+    return res.status(401).json({ error: "WhatsApp não conectado" });
+  }
+
+  if (!message || typeof message !== "string") {
+    return res.status(400).json({ error: "Mensagem inválida" });
+  }
+
+  try {
+    const originalMessage = await session.client.getMessageById(messageId);
+
+    if (!originalMessage) {
+      return res.status(404).json({ error: "Mensagem não encontrada" });
+    }
+
+    const chat = await originalMessage.getChat();
+    const sentMsg = await chat.sendMessage(message, {
+      quotedMessageId: originalMessage.id._serialized,
+      sendSeen: false
+    });
+
+    return res.json({
+      success: true,
+      messageId: sentMsg.id._serialized
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao responder mensagem" });
+  }
+});
+
 router.post("/:userId/arquivar", async (req, res) => {
   const { userId } = req.params;
   const { chatId, arquivar } = req.body;
