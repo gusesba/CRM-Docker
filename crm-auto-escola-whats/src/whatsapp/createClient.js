@@ -62,7 +62,7 @@ async function sendBackupMessage(payload) {
     if (!response.ok) {
       const responseText = await response.text().catch(() => "");
       console.error(
-        `Falha ao enviar backup (${response.status}). ${responseText}`
+        `Falha ao enviar backup (${response.status}). ${responseText}`,
       );
     }
   } catch (err) {
@@ -106,7 +106,6 @@ async function buildMessagePayload(msg, userId) {
       ? `/whatsapp/${userId}/messages/${msg.id._serialized}/media`
       : null,
     author: msg.author || null,
-    isEdited: Boolean(msg.isEdited),
     isForwarded: Boolean(msg.isForwarded),
     replyTo,
   };
@@ -132,9 +131,7 @@ function createWhatsAppClient(userId, options = {}) {
     if (qrTimeoutId) return;
     qrTimeoutId = setTimeout(() => {
       if (ready || invalidated) return;
-      console.warn(
-        `[${userId}] QR Code expirado após ${QR_EXPIRATION_MS}ms`
-      );
+      console.warn(`[${userId}] QR Code expirado após ${QR_EXPIRATION_MS}ms`);
       qrCodeBase64 = null;
       invalidate("qr_timeout");
     }, QR_EXPIRATION_MS);
@@ -160,15 +157,19 @@ function createWhatsAppClient(userId, options = {}) {
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId, // 🔥 chave do multi-usuário
-      dataPath: process.env.WWEBJS_DATA_PATH || "/data/.wwebjs_auth"
+      dataPath: process.env.WWEBJS_DATA_PATH || "/data/.wwebjs_auth",
     }),
     puppeteer: {
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
       headless: true,
       timeout: 240000,
       protocolTimeout: 240000,
-      args: ["--no-sandbox", "--disable-setuid-sandbox","--disable-dev-shm-usage",
-    "--disable-gpu",],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
     },
   });
 
@@ -177,7 +178,7 @@ function createWhatsAppClient(userId, options = {}) {
     qrAttempts += 1;
     if (qrAttempts > MAX_QR_ATTEMPTS) {
       console.warn(
-        `[${userId}] Limite de tentativas de QR atingido (${MAX_QR_ATTEMPTS})`
+        `[${userId}] Limite de tentativas de QR atingido (${MAX_QR_ATTEMPTS})`,
       );
       qrCodeBase64 = null;
       invalidate("qr_attempts_exceeded");
@@ -200,10 +201,10 @@ function createWhatsAppClient(userId, options = {}) {
 
   client.on("authenticated", () => console.log(`[${userId}] authenticated`));
   client.on("loading_screen", (percent, msg) =>
-    console.log(`[${userId}] loading ${percent}% ${msg}`)
+    console.log(`[${userId}] loading ${percent}% ${msg}`),
   );
   client.on("change_state", (state) =>
-    console.log(`[${userId}] state: ${state}`)
+    console.log(`[${userId}] state: ${state}`),
   );
 
   client.on("auth_failure", (msg) => {
@@ -225,7 +226,7 @@ function createWhatsAppClient(userId, options = {}) {
 
     const chatName = await getChatName(msg);
     const messagePayload = await buildMessagePayload(msg, userId);
-  
+
     emitMessage(userId, {
       chatId: msg.to,
       message: messagePayload,
@@ -239,7 +240,7 @@ function createWhatsAppClient(userId, options = {}) {
     });
   });
 
-  client.on("message", async (msg) => {    
+  client.on("message", async (msg) => {
     if (isStatusBroadcast(msg)) return;
     console.log("Nova mensagem recebida");
 
