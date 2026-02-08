@@ -1,5 +1,6 @@
 using Exemplo.Domain.Model;
 using Exemplo.Service.Queries;
+using Exemplo.Service.Commands;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -40,6 +41,15 @@ namespace Renova.API.Controllers
             });
 
             return Ok(mensagens);
+        }
+
+        [HttpPost("vincular")]
+        public async Task<IActionResult> VincularConversasNumero(
+            [FromBody] VincularConversasNumeroCommand command,
+            CancellationToken cancellationToken)
+        {
+            var resultado = await _mediator.Send(command, cancellationToken);
+            return Ok(resultado);
         }
     }
 }
