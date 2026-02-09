@@ -1,5 +1,6 @@
 using Exemplo.Domain.Model;
 using Exemplo.Domain.Model.Dto;
+using Exemplo.Domain.Model.Enum;
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Security;
@@ -55,7 +56,11 @@ namespace Exemplo.Service.Handlers
                 .Include(v => v.VendaWhatsapp)
                 .ApplySedeFilter(access)
                 .Where(v => v.Contato != null)
-                .Where(v => v.VendedorId == access.UsuarioId);
+                .Where(v => v.VendedorId == access.UsuarioId)
+                .Where(v =>
+                    v.Status != StatusEnum.VendaEfetivada &&
+                    v.Status != StatusEnum.OptouPelaConcorrencia &&
+                    v.Status != StatusEnum.NaoEnviarMais);
 
             var leads = await leadsQuery.ToListAsync(cancellationToken);
 
