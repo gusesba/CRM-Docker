@@ -41,16 +41,6 @@ namespace Exemplo.Service.Handlers
 
             var chatIds = uniqueChats.Select(c => c.WhatsappChatId).ToList();
 
-            var conversas = await _context.ChatWhatsapp
-                .Include(c => c.Usuario)
-                .Where(c => chatIds.Contains(c.WhatsappChatId))
-                .ApplySedeFilter(access)
-                .ToListAsync(cancellationToken);
-
-            var conversasByChatId = conversas
-                .GroupBy(c => c.WhatsappChatId)
-                .ToDictionary(g => g.Key, g => g.First());
-
             var existingLinks = await _context.VendaWhatsapp
                 .Include(vw => vw.Venda)
                 .Where(vw => chatIds.Contains(vw.WhatsappChatId))
@@ -73,12 +63,6 @@ namespace Exemplo.Service.Handlers
 
             foreach (var item in uniqueChats)
             {
-                if (!conversasByChatId.TryGetValue(item.WhatsappChatId, out var conversa))
-                {
-                    resumo.ConversasSemLeadEncontrado++;
-                    continue;
-                }
-
                 if (existingLinksByChatId.TryGetValue(item.WhatsappChatId, out var existingLink))
                 {
                     resumo.ConversasJaVinculadas++;
@@ -111,7 +95,7 @@ namespace Exemplo.Service.Handlers
                 {
                     VendaId = venda.Id,
                     WhatsappChatId = item.WhatsappChatId,
-                    WhatsappUserId = conversa.UsuarioId.ToString()
+                    WhatsappUserId = access.UsuarioId.ToString()
                 };
 
                 _context.VendaWhatsapp.Add(vinculo);
