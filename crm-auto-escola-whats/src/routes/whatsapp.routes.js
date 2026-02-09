@@ -64,6 +64,47 @@ function getMessageType(msg) {
   return "document";
 }
 
+async function buildQuotedMessageResponse(msg, userId) {
+  if (!msg.hasQuotedMsg) return null;
+  try {
+    const quoted = await msg.getQuotedMessage();
+    if (!quoted) return null;
+    return {
+      id: quoted.id._serialized,
+      body: quoted.body,
+      fromMe: quoted.fromMe,
+      timestamp: quoted.timestamp,
+      type: getMessageType(quoted),
+      hasMedia: quoted.hasMedia,
+      mediaUrl: quoted.hasMedia
+        ? `/whatsapp/${userId}/messages/${quoted.id._serialized}/media`
+        : null,
+      author: quoted.author || null,
+    };
+  } catch (err) {
+    console.warn("Falha ao obter mensagem respondida", err);
+    return null;
+  }
+}
+
+async function buildMessageResponse(msg, userId) {
+  const replyTo = await buildQuotedMessageResponse(msg, userId);
+  return {
+    id: msg.id._serialized,
+    body: msg.body,
+    fromMe: msg.fromMe,
+    timestamp: msg.timestamp,
+    type: getMessageType(msg),
+    hasMedia: msg.hasMedia,
+    mediaUrl: msg.hasMedia
+      ? `/whatsapp/${userId}/messages/${msg.id._serialized}/media`
+      : null,
+    author: msg.author || null,
+    isForwarded: Boolean(msg.isForwarded),
+    replyTo,
+  };
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -148,7 +189,12 @@ function applyTemplate(text, params = {}) {
   });
 }
 
-async function buildChatResponse(chat, userId, session, lastMessageOverride = null) {
+async function buildChatResponse(
+  chat,
+  userId,
+  session,
+  lastMessageOverride = null,
+) {
   const chatId = chat.id._serialized;
   let profilePicUrl = getProfileImageUrlFromDisk(userId, chatId);
 
@@ -157,14 +203,10 @@ async function buildChatResponse(chat, userId, session, lastMessageOverride = nu
       const remoteUrl = await withTimeout(
         session.client.getProfilePicUrl(chatId),
         3000,
-        null
+        null,
       );
 
-      profilePicUrl = await saveProfileImageFromUrl(
-        userId,
-        chatId,
-        remoteUrl
-      );
+      profilePicUrl = await saveProfileImageFromUrl(userId, chatId, remoteUrl);
     } catch (err) {
       console.error(`[${userId}] ⚠️ Avatar erro (${chatId}):`, err.message);
     }
@@ -211,7 +253,8 @@ router.use(validateToken);
 router.get("/:userId/login", (req, res) => {
   const { userId } = req.params;
 
-  if(!userId || userId == undefined || userId == "undefined" || userId == null) return;
+  if (!userId || userId == undefined || userId == "undefined" || userId == null)
+    return;
 
   const session = getSession(userId);
 
@@ -259,9 +302,7 @@ router.delete("/:userId/session", async (req, res) => {
 function withTimeout(promise, ms, fallback = null) {
   return Promise.race([
     promise,
-    new Promise((resolve) =>
-      setTimeout(() => resolve(fallback), ms)
-    ),
+    new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
   ]);
 }
 
@@ -304,18 +345,18 @@ router.get("/:userId/conversations", async (req, res) => {
               const remoteUrl = await withTimeout(
                 session.client.getProfilePicUrl(chatId),
                 3000, // ⏱️ 3s timeout
-                null
+                null,
               );
 
               profilePicUrl = await saveProfileImageFromUrl(
                 userId,
                 chatId,
-                remoteUrl
+                remoteUrl,
               );
             } catch (err) {
               console.error(
                 `[${userId}] ⚠️ Avatar erro (${chatId}):`,
-                err.message
+                err.message,
               );
             }
           }
@@ -350,14 +391,14 @@ router.get("/:userId/conversations", async (req, res) => {
             nmr,
             archived: chat.archived || false,
           };
-        })
+        }),
       );
 
       result.push(...batchResults);
 
       const percent = Math.round((processed / total) * 100);
       console.log(
-        `[${userId}] ⏳ Progresso: ${processed}/${total} (${percent}%)`
+        `[${userId}] ⏳ Progresso: ${processed}/${total} (${percent}%)`,
       );
     }
 
@@ -368,7 +409,6 @@ router.get("/:userId/conversations", async (req, res) => {
     res.status(500).json({ error: "Erro ao buscar conversas" });
   }
 });
-
 
 router.get("/:userId/messages/:chatId", async (req, res) => {
   const { userId, chatId } = req.params;
@@ -391,18 +431,9 @@ router.get("/:userId/messages/:chatId", async (req, res) => {
 
     const messages = await chat.fetchMessages({ limit });
 
-    const result = messages.map((msg) => ({
-      id: msg.id._serialized,
-      body: msg.body,
-      fromMe: msg.fromMe,
-      timestamp: msg.timestamp,
-      type: getMessageType(msg),
-      hasMedia: msg.hasMedia,
-      mediaUrl: msg.hasMedia
-        ? `/whatsapp/${userId}/messages/${msg.id._serialized}/media`
-        : null,
-      author: msg.author || null,
-    }));
+    const result = await Promise.all(
+      messages.map((msg) => buildMessageResponse(msg, userId)),
+    );
 
     res.json(result);
   } catch (err) {
@@ -524,7 +555,6 @@ router.delete("/:userId/messages/:messageId", async (req, res) => {
   }
 });
 
-
 router.post("/:userId/messages/batch", async (req, res) => {
   const { userId } = req.params;
   const {
@@ -569,7 +599,9 @@ router.post("/:userId/messages/batch", async (req, res) => {
     (!Number.isInteger(messagesUntilBigInterval) ||
       messagesUntilBigInterval <= 0)
   ) {
-    return res.status(400).json({ error: "Quantidade até intervalo grande inválida" });
+    return res
+      .status(400)
+      .json({ error: "Quantidade até intervalo grande inválida" });
   }
 
   const delayConfig =
@@ -588,7 +620,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
     intervalMs !== undefined ||
     bigIntervalMs !== undefined ||
     messagesUntilBigInterval !== undefined;
-  
+
   for (const item of items) {
     if (item?.type === "text") {
       if (typeof item.message !== "string" || item.message.trim() === "") {
@@ -659,7 +691,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
             const media = new MessageMedia(
               item.mimetype,
               data,
-              item.filename || "media"
+              item.filename || "media",
             );
             const caption =
               typeof item.caption === "string"
@@ -667,7 +699,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
                 : item.caption;
             sentMsg = await chat.sendMessage(media, {
               caption,
-              sendSeen: false
+              sendSeen: false,
             });
 
             saveMedia(
@@ -675,7 +707,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
                 data,
                 mimetype: item.mimetype,
               },
-              sentMsg.id._serialized
+              sentMsg.id._serialized,
             );
           }
 
@@ -687,7 +719,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
         } catch (err) {
           console.error(err);
           chatResult.errors.push(
-            `Erro ao enviar item ${index + 1}: ${err.message}`
+            `Erro ao enviar item ${index + 1}: ${err.message}`,
           );
         }
 
@@ -767,7 +799,7 @@ router.post("/:userId/messages/number", async (req, res) => {
     }
 
     const sentMsg = await session.client.sendMessage(resolvedId, message, {
-      sendSeen: false
+      sendSeen: false,
     });
 
     const chat = await session.client.getChatById(resolvedId);
@@ -778,11 +810,81 @@ router.post("/:userId/messages/number", async (req, res) => {
     return res.json({
       success: true,
       chat: chatResponse,
-      normalizedNumber: resolvedDigits
+      normalizedNumber: resolvedDigits,
     });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Erro ao enviar mensagem" });
+  }
+});
+
+router.post("/:userId/messages/:messageId/reply", async (req, res) => {
+  const { userId, messageId } = req.params;
+  const { message } = req.body;
+
+  const session = getSession(userId);
+
+  if (!session || !session.isReady()) {
+    return res.status(401).json({ error: "WhatsApp não conectado" });
+  }
+
+  if (!message || typeof message !== "string") {
+    return res.status(400).json({ error: "Mensagem inválida" });
+  }
+
+  try {
+    const originalMessage = await session.client.getMessageById(messageId);
+
+    if (!originalMessage) {
+      return res.status(404).json({ error: "Mensagem não encontrada" });
+    }
+
+    const chat = await originalMessage.getChat();
+    const sentMsg = await chat.sendMessage(message, {
+      quotedMessageId: originalMessage.id._serialized,
+      sendSeen: false,
+    });
+
+    return res.json({
+      success: true,
+      messageId: sentMsg.id._serialized,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao responder mensagem" });
+  }
+});
+
+router.post("/:userId/messages/:messageId/forward", async (req, res) => {
+  const { userId, messageId } = req.params;
+  const { chatId } = req.body;
+
+  const session = getSession(userId);
+
+  if (!session || !session.isReady()) {
+    return res.status(401).json({ error: "WhatsApp não conectado" });
+  }
+
+  if (!chatId || typeof chatId !== "string") {
+    return res.status(400).json({ error: "Chat inválido" });
+  }
+
+  try {
+    const originalMessage = await session.client.getMessageById(messageId);
+
+    if (!originalMessage) {
+      return res.status(404).json({ error: "Mensagem não encontrada" });
+    }
+
+    const forwardedMessage = await originalMessage.forward(chatId);
+
+    return res.json({
+      success: true,
+      messageId: forwardedMessage?.id?._serialized ?? null,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao encaminhar mensagem" });
   }
 });
 
@@ -839,7 +941,8 @@ router.post("/:userId/addressbook/contact", async (req, res) => {
       phoneNumber,
       firstName,
       lastName,
-      true);
+      true,
+    );
 
     return res.json({ success: true, result, phoneNumber });
   } catch (err) {
@@ -847,8 +950,6 @@ router.post("/:userId/addressbook/contact", async (req, res) => {
     return res.status(500).json({ error: "Erro ao salvar contato" });
   }
 });
-
-
 
 router.post("/:userId/messages/:chatId", async (req, res) => {
   const { userId, chatId } = req.params;
@@ -866,7 +967,7 @@ router.post("/:userId/messages/:chatId", async (req, res) => {
 
   try {
     const chat = await session.client.getChatById(chatId);
-    await chat.sendMessage(message, {sendSeen: false});
+    await chat.sendMessage(message, { sendSeen: false });
 
     res.json({ success: true });
   } catch (err) {
@@ -903,11 +1004,14 @@ router.post(
       const media = new MessageMedia(
         file.mimetype,
         base64,
-        file.originalname // 🔥 EXTREMAMENTE IMPORTANTE
+        file.originalname, // 🔥 EXTREMAMENTE IMPORTANTE
       );
 
       // ✅ ENVIA E RECEBE A MENSAGEM REAL
-      const sentMsg = await chat.sendMessage(media, { caption, sendSeen: false });
+      const sentMsg = await chat.sendMessage(media, {
+        caption,
+        sendSeen: false,
+      });
 
       // 🔥 AGORA SIM: salva no cache DEFINITIVO
       saveMedia(
@@ -915,7 +1019,7 @@ router.post(
           data: fs.readFileSync(file.path, "base64"),
           mimetype: file.mimetype,
         },
-        sentMsg.id._serialized
+        sentMsg.id._serialized,
       );
 
       fs.unlinkSync(file.path); // limpa upload temporário
@@ -928,8 +1032,7 @@ router.post(
       console.error(err);
       res.status(500).json({ error: "Erro ao enviar mídia" });
     }
-  }
+  },
 );
-
 
 module.exports = router;
