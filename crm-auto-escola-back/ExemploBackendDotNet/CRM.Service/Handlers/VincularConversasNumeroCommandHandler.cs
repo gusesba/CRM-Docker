@@ -64,7 +64,8 @@ namespace Exemplo.Service.Handlers
             var leadsQuery = _context.Venda
                 .Include(v => v.VendaWhatsapp)
                 .ApplySedeFilter(access)
-                .Where(v => v.Contato != null);
+                .Where(v => v.Contato != null)
+                .Where(v => v.VendedorId == access.UsuarioId);
 
             var leads = await leadsQuery.ToListAsync(cancellationToken);
 
