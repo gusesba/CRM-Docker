@@ -1,6 +1,5 @@
 using Exemplo.Domain.Model;
 using Exemplo.Domain.Model.Dto;
-using Exemplo.Domain.Model.Enum;
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Security;
@@ -10,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Exemplo.Service.Handlers
 {
     public class VincularConversasNumeroCommandHandler
-        : IRequestHandler<VincularConversasNumeroCommand, List<ConversaVinculoResultadoDto>>
+        : IRequestHandler<VincularConversasNumeroCommand, ConversaVinculoResumoDto>
     {
         private readonly ExemploDbContext _context;
         private readonly IUsuarioContextService _usuarioContextService;
@@ -23,7 +22,7 @@ namespace Exemplo.Service.Handlers
             _usuarioContextService = usuarioContextService;
         }
 
-        public async Task<List<ConversaVinculoResultadoDto>> Handle(
+        public async Task<ConversaVinculoResumoDto> Handle(
             VincularConversasNumeroCommand request,
             CancellationToken cancellationToken)
         {
@@ -31,7 +30,7 @@ namespace Exemplo.Service.Handlers
 
             if (request.Conversas == null || request.Conversas.Count == 0)
             {
-                return new List<ConversaVinculoResultadoDto>();
+                return new ConversaVinculoResumoDto();
             }
 
             var uniqueChats = request.Conversas
@@ -69,36 +68,26 @@ namespace Exemplo.Service.Handlers
 
             var leads = await leadsQuery.ToListAsync(cancellationToken);
 
-            var results = new List<ConversaVinculoResultadoDto>();
+            var resumo = new ConversaVinculoResumoDto();
 
             foreach (var item in uniqueChats)
             {
-                var result = new ConversaVinculoResultadoDto
-                {
-                    WhatsappChatId = item.WhatsappChatId,
-                    Status = WhatsStatusEnum.NaoEncontrado,
-                    Venda = null
-                };
-
                 if (!conversasByChatId.TryGetValue(item.WhatsappChatId, out var conversa))
                 {
-                    results.Add(result);
+                    resumo.ConversasSemLeadEncontrado++;
                     continue;
                 }
 
                 if (existingLinksByChatId.TryGetValue(item.WhatsappChatId, out var existingLink))
                 {
-                    result.Status = WhatsStatusEnum.Criado;
-                    result.Venda = existingLink.Venda;
-
-                    results.Add(result);
+                    resumo.ConversasJaVinculadas++;
                     continue;
                 }
 
                 var normalizedNumero = NormalizeDigits(item.Numero);
                 if (string.IsNullOrWhiteSpace(normalizedNumero))
                 {
-                    results.Add(result);
+                    resumo.ConversasSemLeadEncontrado++;
                     continue;
                 }
 
@@ -107,15 +96,13 @@ namespace Exemplo.Service.Handlers
 
                 if (venda == null)
                 {
-                    results.Add(result);
+                    resumo.ConversasSemLeadEncontrado++;
                     continue;
                 }
 
                 if (venda.VendaWhatsapp != null)
                 {
-                    result.Status = WhatsStatusEnum.Criado;
-                    result.Venda = venda;
-                    results.Add(result);
+                    resumo.ConversasJaVinculadas++;
                     continue;
                 }
 
@@ -129,12 +116,10 @@ namespace Exemplo.Service.Handlers
                 _context.VendaWhatsapp.Add(vinculo);
                 await _context.SaveChangesAsync(cancellationToken);
 
-                result.Status = WhatsStatusEnum.Criado;
-                result.Venda = venda;
-                results.Add(result);
+                resumo.ConversasVinculadas++;
             }
 
-            return results;
+            return resumo;
         }
 
         private static string NormalizeDigits(string input)

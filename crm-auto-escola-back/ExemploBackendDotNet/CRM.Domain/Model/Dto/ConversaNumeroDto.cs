@@ -14,4 +14,11 @@ namespace Exemplo.Domain.Model.Dto
         public WhatsStatusEnum Status { get; set; }
         public VendaModel? Venda { get; set; }
     }
+
+    public class ConversaVinculoResumoDto
+    {
+        public int ConversasJaVinculadas { get; set; }
+        public int ConversasVinculadas { get; set; }
+        public int ConversasSemLeadEncontrado { get; set; }
+    }
 }
