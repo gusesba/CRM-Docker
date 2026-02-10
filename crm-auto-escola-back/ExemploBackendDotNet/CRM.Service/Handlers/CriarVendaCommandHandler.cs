@@ -3,6 +3,7 @@ using Exemplo.Domain.Model.Dto;
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Exceptions;
+using Exemplo.Service.Helpers;
 using Exemplo.Service.Queries;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -19,8 +20,12 @@ namespace Exemplo.Service.Handlers
 
         public async Task<VendaModel> Handle(CriarVendaCommand request, CancellationToken cancellationToken)
         {
+            var contatosParaComparar = ContatoNormalization.BuildPhoneVariants(request.Contato).ToList();
             var vendaExistente = await _context.Venda
-               .FirstOrDefaultAsync(u => u.Contato == request.Contato);
+                .AsNoTracking()
+                .Where(v => v.Contato != null)
+                .Select(v => new { v.Id, v.Contato })
+                .FirstOrDefaultAsync(v => contatosParaComparar.Contains(v.Contato!), cancellationToken);
 
             if (vendaExistente != null)
                 throw new ConflictException("Venda já cadastrada.");

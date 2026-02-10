@@ -2,6 +2,7 @@
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Exceptions;
+using Exemplo.Service.Helpers;
 using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +38,16 @@ namespace Exemplo.Service.Handlers
                 access.EnsureSameSede(request.SedeId, "Não é permitido alterar a sede da venda.");
                 venda.SedeId = request.SedeId;
             }
+
+            var contatosParaComparar = ContatoNormalization.BuildPhoneVariants(request.Contato).ToList();
+            var vendaExistente = await _context.Venda
+                .AsNoTracking()
+                .Where(v => v.Id != venda.Id && v.Contato != null)
+                .Select(v => new { v.Id, v.Contato })
+                .FirstOrDefaultAsync(v => contatosParaComparar.Contains(v.Contato!), cancellationToken);
+
+            if (vendaExistente != null)
+                throw new ConflictException("Venda já cadastrada.");
 
             venda.ComoConheceu = request.ComoConheceu;
             venda.VendedorId = request.VendedorId;

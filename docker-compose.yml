@@ -23,6 +23,10 @@ services:
     volumes:
       - wwebjs-data:/data
       - whats-media:/app/src/media
+    command: >
+      sh -c "
+      find /data -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+      && exec npm start"
     restart: unless-stopped
 
   crm-auto-escola-back:
