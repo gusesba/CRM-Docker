@@ -6,5 +6,6 @@ namespace Exemplo.Service.Queries
     public class ListarVendasWhatsappQuery : IRequest<List<VendaWhatsappDto>>
     {
         public string? Pesquisa { get; set; }
+        public int? VendedorId { get; set; }
     }
 }

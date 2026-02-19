@@ -27,7 +27,6 @@ namespace Exemplo.Service.Handlers
      CancellationToken cancellationToken)
         {
             var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
-            var userId = access.UsuarioId;
 
             IQueryable<VendaWhatsappModel> query = _context.VendaWhatsapp
                 .AsNoTracking()
@@ -35,9 +34,23 @@ namespace Exemplo.Service.Handlers
 
             query = query.ApplySedeFilter(access);
 
-            query = query.Where(vw =>
-                vw.Venda != null &&
-                (vw.Venda.VendedorId == userId || vw.Venda.VendedorAtualId == userId));
+            if (access.IsAdmin)
+            {
+                if (request.VendedorId.HasValue)
+                {
+                    var vendedorId = request.VendedorId.Value;
+                    query = query.Where(vw =>
+                        vw.Venda != null &&
+                        (vw.Venda.VendedorId == vendedorId || vw.Venda.VendedorAtualId == vendedorId));
+                }
+            }
+            else
+            {
+                var userId = access.UsuarioId;
+                query = query.Where(vw =>
+                    vw.Venda != null &&
+                    (vw.Venda.VendedorId == userId || vw.Venda.VendedorAtualId == userId));
+            }
 
             if (!string.IsNullOrWhiteSpace(request.Pesquisa))
             {
