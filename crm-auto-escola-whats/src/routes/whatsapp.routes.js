@@ -9,9 +9,6 @@ const multer = require("multer");
 const fs = require("fs");
 const { MessageMedia } = require("whatsapp-web.js");
 
-const BATCH_DELAY_MODE = "fixed";
-const BATCH_FIXED_DELAY_MS = 1500;
-const BATCH_RANDOM_DELAY_RANGE_MS = { min: 1000, max: 3000 };
 const VALIDATE_TOKEN_URL = process.env.VALIDATE_TOKEN_URL || null;
 async function validateToken(req, res, next) {
   const token = req.query.token ?? req.body?.token;
@@ -604,23 +601,6 @@ router.post("/:userId/messages/batch", async (req, res) => {
       .json({ error: "Quantidade até intervalo grande inválida" });
   }
 
-  const delayConfig =
-    BATCH_DELAY_MODE === "fixed"
-      ? {
-          mode: "fixed",
-          delayMs: BATCH_FIXED_DELAY_MS,
-        }
-      : {
-          mode: "random",
-          minMs: BATCH_RANDOM_DELAY_RANGE_MS.min,
-          maxMs: BATCH_RANDOM_DELAY_RANGE_MS.max,
-        };
-
-  const shouldUseCustomDelay =
-    intervalMs !== undefined ||
-    bigIntervalMs !== undefined ||
-    messagesUntilBigInterval !== undefined;
-
   for (const item of items) {
     if (item?.type === "text") {
       if (typeof item.message !== "string" || item.message.trim() === "") {
@@ -655,26 +635,9 @@ router.post("/:userId/messages/batch", async (req, res) => {
         if (typeof baseMs !== "number") {
           return 0;
         }
-        const randomized = baseMs + getRandomInt(-3000, 3000);
+        const randomized = baseMs + getRandomInt(0, baseMs);
         return Math.max(0, randomized);
       };
-
-      const randomizeCount = (baseCount) => {
-        if (!Number.isInteger(baseCount)) {
-          return 0;
-        }
-        return Math.max(1, baseCount + getRandomInt(-3, 3));
-      };
-
-      const effectiveIntervalMs = shouldUseCustomDelay
-        ? randomizeDelay(intervalMs ?? 0)
-        : null;
-      const effectiveBigIntervalMs = shouldUseCustomDelay
-        ? randomizeDelay(bigIntervalMs ?? 0)
-        : null;
-      const effectiveMessagesUntilBigInterval = shouldUseCustomDelay
-        ? randomizeCount(messagesUntilBigInterval ?? 0)
-        : null;
 
       for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
@@ -722,29 +685,10 @@ router.post("/:userId/messages/batch", async (req, res) => {
             `Erro ao enviar item ${index + 1}: ${err.message}`,
           );
         }
-
-        const hasNextMessage = index < items.length - 1;
-        if (hasNextMessage) {
-          let delayToUse;
-
-          if (shouldUseCustomDelay) {
-            const nextIndex = index + 1;
-            const shouldUseBigInterval =
-              effectiveMessagesUntilBigInterval > 0 &&
-              nextIndex % effectiveMessagesUntilBigInterval === 0;
-            delayToUse = shouldUseBigInterval
-              ? effectiveBigIntervalMs
-              : effectiveIntervalMs;
-          } else {
-            delayToUse =
-              delayConfig.mode === "fixed"
-                ? delayConfig.delayMs
-                : getRandomInt(delayConfig.minMs, delayConfig.maxMs);
-          }
-          if (delayToUse > 0) {
-            await wait(delayToUse);
-          }
+        if(index % messagesUntilBigInterval === 0) {
+            await wait(randomizeDelay(bigIntervalMs));
         }
+        await wait(randomizeDelay(intervalMs));       
       }
     } catch (err) {
       console.error(err);
