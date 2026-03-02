@@ -54,6 +54,7 @@ namespace Exemplo.Service.Handlers
             {
                 var leadsQuery = _context.Venda
                     .Include(v => v.VendaWhatsapp)
+                    .Where(v => v.VendedorId == request.UsuarioId)
                     .AsQueryable();
 
                 if (request.Status.HasValue)
