@@ -9,6 +9,7 @@ namespace Exemplo.Service.Commands
         public string Nome { get; set; }
         public int UsuarioId { get; set; }
         public StatusEnum? Status { get; set; }
+        public int? ServicoId { get; set; }
         public DateTime? DataInicialDe { get; set; }
         public DateTime? DataInicialAte { get; set; }
     }
