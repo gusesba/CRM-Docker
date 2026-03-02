@@ -50,7 +50,7 @@ namespace Exemplo.Service.Handlers
             var entity = _context.GrupoWhatsapp.Add(grupo);
             await _context.SaveChangesAsync(cancellationToken);
 
-            if (request.Status.HasValue || request.DataInicialDe.HasValue || request.DataInicialAte.HasValue)
+            if (request.Status.HasValue || request.ServicoId.HasValue || request.DataInicialDe.HasValue || request.DataInicialAte.HasValue)
             {
                 var leadsQuery = _context.Venda
                     .Include(v => v.VendaWhatsapp)
@@ -59,6 +59,9 @@ namespace Exemplo.Service.Handlers
 
                 if (request.Status.HasValue)
                     leadsQuery = leadsQuery.Where(v => v.Status == request.Status.Value);
+
+                if (request.ServicoId.HasValue)
+                    leadsQuery = leadsQuery.Where(v => v.ServicoId == request.ServicoId.Value);
 
                 if (dataInicialDe.HasValue)
                 {
