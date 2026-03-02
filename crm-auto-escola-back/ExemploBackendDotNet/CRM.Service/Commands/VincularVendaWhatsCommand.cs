@@ -7,6 +7,7 @@ namespace Exemplo.Service.Commands
     {
         public int VendaId { get; set; }
         public string WhatsappChatId { get; set; } = String.Empty;
+        public string WhatsappChatNumero { get; set; } = String.Empty;
         public string WhatsappUserId { get; set; } = String.Empty;
     }
 }

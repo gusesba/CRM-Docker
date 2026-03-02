@@ -28,10 +28,15 @@ namespace Exemplo.Service.Handlers
         )
         {
             var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
+            var chatIdentifiers = new[] { request.WhatsappChatId, request.WhatsappChatNumero }
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct()
+                .ToList();
+
             var vinculada = await _context.VendaWhatsapp
             .Include(x => x.Venda)
             .FirstOrDefaultAsync(x =>
-                x.WhatsappChatId == request.WhatsappChatId &&
+                chatIdentifiers.Contains(x.WhatsappChatId) &&
                 x.WhatsappUserId == request.WhatsappUserId &&
                 (access.AllowAll || !access.SedeId.HasValue || x.Venda.SedeId == access.SedeId.Value),
                 cancellationToken);
