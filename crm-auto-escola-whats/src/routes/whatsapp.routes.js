@@ -715,10 +715,10 @@ router.post("/:userId/messages/batch", async (req, res) => {
             `Erro ao enviar item ${index + 1}: ${err.message}`,
           );
         }
-        if(index % messagesUntilBigInterval === 0) {
-            await wait(randomizeDelay(bigIntervalMs));
+        if ((index + 1) % messagesUntilBigInterval === 0) {
+          await wait(randomizeDelay(bigIntervalMs));
         }
-        await wait(randomizeDelay(intervalMs));       
+        await wait(randomizeDelay(intervalMs));
       }
     } catch (err) {
       console.error(err);
