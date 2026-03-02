@@ -119,10 +119,29 @@ namespace Exemplo.Service.Handlers
 
         private static List<string> GetChatIdentifiers(string chatId, string chatNumero)
         {
-            return new[] { chatId, chatNumero }
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Distinct()
-                .ToList();
+            var identifiers = new HashSet<string>(StringComparer.Ordinal);
+
+            if (!string.IsNullOrWhiteSpace(chatId))
+            {
+                identifiers.Add(chatId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(chatNumero))
+            {
+                identifiers.Add(chatNumero);
+
+                var digits = NormalizeDigits(chatNumero);
+                if (!string.IsNullOrWhiteSpace(digits))
+                {
+                    foreach (var variant in BuildCandidates(digits))
+                    {
+                        identifiers.Add(variant);
+                        identifiers.Add($"{variant}@c.us");
+                    }
+                }
+            }
+
+            return identifiers.ToList();
         }
 
         private static string NormalizeDigits(string input)
