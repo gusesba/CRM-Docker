@@ -110,30 +110,25 @@ namespace Exemplo.Service.Handlers
         {
             var identifiers = new HashSet<string>(StringComparer.Ordinal);
 
-            void AddIdentifier(string? value)
+            if (!string.IsNullOrWhiteSpace(chatId))
             {
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    return;
-                }
-
-                identifiers.Add(value);
-
-                var digits = new string(value.Where(char.IsDigit).ToArray());
-                if (string.IsNullOrWhiteSpace(digits))
-                {
-                    return;
-                }
-
-                foreach (var variant in BuildPhoneVariants(digits))
-                {
-                    identifiers.Add(variant);
-                    identifiers.Add($"{variant}@c.us");
-                }
+                identifiers.Add(chatId);
             }
 
-            AddIdentifier(chatId);
-            AddIdentifier(chatNumero);
+            if (!string.IsNullOrWhiteSpace(chatNumero))
+            {
+                identifiers.Add(chatNumero);
+
+                var digits = new string(chatNumero.Where(char.IsDigit).ToArray());
+                if (!string.IsNullOrWhiteSpace(digits))
+                {
+                    foreach (var variant in BuildPhoneVariants(digits))
+                    {
+                        identifiers.Add(variant);
+                        identifiers.Add($"{variant}@c.us");
+                    }
+                }
+            }
 
             return identifiers.ToList();
         }
