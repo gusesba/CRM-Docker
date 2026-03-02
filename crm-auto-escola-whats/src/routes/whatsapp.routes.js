@@ -407,6 +407,36 @@ router.get("/:userId/conversations", async (req, res) => {
   }
 });
 
+router.post("/:userId/contacts/by-chat-ids", async (req, res) => {
+  const { userId } = req.params;
+  const { chatIds } = req.body;
+
+  const session = getSession(userId);
+  if (!session || !session.isReady()) {
+    return res.status(401).json({ error: "WhatsApp não conectado" });
+  }
+
+  if (!Array.isArray(chatIds) || chatIds.length === 0) {
+    return res.status(400).json({ error: "Lista de chatIds inválida" });
+  }
+
+  if (chatIds.some((chatId) => typeof chatId !== "string" || !chatId.trim())) {
+    return res.status(400).json({ error: "chatIds devem ser strings" });
+  }
+
+  try {
+    const contacts = await session.client.getContactLidAndPhone(chatIds);
+
+    return res.json({
+      success: true,
+      contacts: Array.isArray(contacts) ? contacts : [],
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao buscar contatos" });
+  }
+});
+
 router.get("/:userId/messages/:chatId", async (req, res) => {
   const { userId, chatId } = req.params;
   const limit = Number(req.query.limit) || 50;
