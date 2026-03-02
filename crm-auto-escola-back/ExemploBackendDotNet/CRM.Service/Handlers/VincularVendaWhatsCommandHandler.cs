@@ -31,10 +31,15 @@ namespace Exemplo.Service.Handlers
                 throw new NotFoundException("Venda não encontrada.");
 
             // 🔎 Verifica se já existe vínculo para esse chat/user
+            var chatIdentifiers = new[] { request.WhatsappChatId, request.WhatsappChatNumero }
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct()
+                .ToList();
+
             var existingLink = await _context.VendaWhatsapp
                 .Include(x => x.Venda)
                 .FirstOrDefaultAsync(x =>
-                    x.WhatsappChatId == request.WhatsappChatId &&
+                    chatIdentifiers.Contains(x.WhatsappChatId) &&
                     x.WhatsappUserId == request.WhatsappUserId,
                     cancellationToken);
 

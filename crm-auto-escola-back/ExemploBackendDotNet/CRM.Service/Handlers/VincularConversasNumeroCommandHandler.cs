@@ -35,16 +35,19 @@ namespace Exemplo.Service.Handlers
             }
 
             var uniqueChats = request.Conversas
-                .Where(c => !string.IsNullOrWhiteSpace(c.WhatsappChatId))
-                .GroupBy(c => c.WhatsappChatId)
+                .Where(c => !string.IsNullOrWhiteSpace(c.WhatsappChatId) || !string.IsNullOrWhiteSpace(c.Numero))
+                .GroupBy(c => $"{c.WhatsappChatId}::{c.Numero}")
                 .Select(g => g.First())
                 .ToList();
 
-            var chatIds = uniqueChats.Select(c => c.WhatsappChatId).ToList();
+            var chatIdentifiers = uniqueChats
+                .SelectMany(item => GetChatIdentifiers(item.WhatsappChatId, item.Numero))
+                .Distinct()
+                .ToList();
 
             var existingLinks = await _context.VendaWhatsapp
                 .Include(vw => vw.Venda)
-                .Where(vw => chatIds.Contains(vw.WhatsappChatId))
+                .Where(vw => chatIdentifiers.Contains(vw.WhatsappChatId))
                 .ApplySedeFilter(access)
                 .ToListAsync(cancellationToken);
 
@@ -68,7 +71,8 @@ namespace Exemplo.Service.Handlers
 
             foreach (var item in uniqueChats)
             {
-                if (existingLinksByChatId.TryGetValue(item.WhatsappChatId, out var existingLink))
+                var identifiers = GetChatIdentifiers(item.WhatsappChatId, item.Numero);
+                if (identifiers.Any(existingLinksByChatId.ContainsKey))
                 {
                     resumo.ConversasJaVinculadas++;
                     continue;
@@ -110,6 +114,15 @@ namespace Exemplo.Service.Handlers
             }
 
             return resumo;
+        }
+
+
+        private static List<string> GetChatIdentifiers(string chatId, string chatNumero)
+        {
+            return new[] { chatId, chatNumero }
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct()
+                .ToList();
         }
 
         private static string NormalizeDigits(string input)
