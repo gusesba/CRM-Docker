@@ -28,10 +28,7 @@ namespace Exemplo.Service.Handlers
         )
         {
             var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
-            var chatIdentifiers = new[] { request.WhatsappChatId, request.WhatsappChatNumero }
-                .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Distinct()
-                .ToList();
+            var chatIdentifiers = BuildChatIdentifiers(request.WhatsappChatId, request.WhatsappChatNumero);
 
             var vinculada = await _context.VendaWhatsapp
             .Include(x => x.Venda)
@@ -58,7 +55,6 @@ namespace Exemplo.Service.Handlers
 
             string RemoveNinthDigitAfterDDD(string phone)
             {
-                // precisa ter pelo menos DDD + 9 + número
                 if (phone.Length >= 11 && phone[2] == '9')
                 {
                     return phone.Remove(2, 1);
@@ -110,5 +106,80 @@ namespace Exemplo.Service.Handlers
             };
         }
 
+        private static List<string> BuildChatIdentifiers(string? chatId, string? chatNumero)
+        {
+            var identifiers = new HashSet<string>(StringComparer.Ordinal);
+
+            void AddIdentifier(string? value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return;
+                }
+
+                identifiers.Add(value);
+
+                var digits = new string(value.Where(char.IsDigit).ToArray());
+                if (string.IsNullOrWhiteSpace(digits))
+                {
+                    return;
+                }
+
+                foreach (var variant in BuildPhoneVariants(digits))
+                {
+                    identifiers.Add(variant);
+                    identifiers.Add($"{variant}@c.us");
+                }
+            }
+
+            AddIdentifier(chatId);
+            AddIdentifier(chatNumero);
+
+            return identifiers.ToList();
+        }
+
+        private static List<string> BuildPhoneVariants(string digits)
+        {
+            var variants = new HashSet<string>(StringComparer.Ordinal);
+
+            void AddVariant(string? value)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    variants.Add(value);
+                }
+            }
+
+            var withoutCountry = digits.StartsWith("55", StringComparison.Ordinal) ? digits.Substring(2) : digits;
+
+            string RemoveNinthDigitAfterDDD(string phone)
+            {
+                if (phone.Length >= 11 && phone[2] == '9')
+                {
+                    return phone.Remove(2, 1);
+                }
+
+                return phone;
+            }
+
+            string AddNinthDigitAfterDDD(string phone)
+            {
+                if (phone.Length == 10)
+                {
+                    return $"{phone.Substring(0, 2)}9{phone.Substring(2)}";
+                }
+
+                return phone;
+            }
+
+            AddVariant(withoutCountry);
+            AddVariant(RemoveNinthDigitAfterDDD(withoutCountry));
+            AddVariant(AddNinthDigitAfterDDD(withoutCountry));
+            AddVariant($"55{withoutCountry}");
+            AddVariant($"55{RemoveNinthDigitAfterDDD(withoutCountry)}");
+            AddVariant($"55{AddNinthDigitAfterDDD(withoutCountry)}");
+
+            return variants.ToList();
+        }
     }
 }
