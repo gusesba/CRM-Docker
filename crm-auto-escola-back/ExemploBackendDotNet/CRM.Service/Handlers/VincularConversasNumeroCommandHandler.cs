@@ -59,11 +59,12 @@ namespace Exemplo.Service.Handlers
                 .Include(v => v.VendaWhatsapp)
                 .ApplySedeFilter(access)
                 .Where(v => v.Contato != null)
-                .Where(v => v.VendedorId == access.UsuarioId)
                 .Where(v =>
                     v.Status != StatusEnum.VendaEfetivada &&
                     v.Status != StatusEnum.OptouPelaConcorrencia &&
                     v.Status != StatusEnum.NaoEnviarMais);
+
+            leadsQuery = leadsQuery.Where(v => (v.VendedorAtualId ?? v.VendedorId) == access.UsuarioId);
 
             var leads = await leadsQuery.ToListAsync(cancellationToken);
 
@@ -100,11 +101,13 @@ namespace Exemplo.Service.Handlers
                     continue;
                 }
 
+                var responsavelVendaId = venda.VendedorAtualId ?? venda.VendedorId;
+
                 var vinculo = new VendaWhatsappModel
                 {
                     VendaId = venda.Id,
                     WhatsappChatId = item.WhatsappChatId,
-                    WhatsappUserId = access.UsuarioId.ToString()
+                    WhatsappUserId = responsavelVendaId.ToString()
                 };
 
                 _context.VendaWhatsapp.Add(vinculo);

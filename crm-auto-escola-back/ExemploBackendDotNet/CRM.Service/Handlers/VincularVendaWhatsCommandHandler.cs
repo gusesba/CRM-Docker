@@ -4,6 +4,7 @@ using Exemplo.Domain.Model.Enum;
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Exceptions;
+using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,22 +14,34 @@ namespace Exemplo.Service.Handlers
         : IRequestHandler<VincularVendaWhatsCommand, ChatStatusDto>
     {
         private readonly ExemploDbContext _context;
+        private readonly IUsuarioContextService _usuarioContextService;
 
-        public VincularVendaWhatsCommandHandler(ExemploDbContext context)
+        public VincularVendaWhatsCommandHandler(
+            ExemploDbContext context,
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<ChatStatusDto> Handle(
             VincularVendaWhatsCommand request,
             CancellationToken cancellationToken)
         {
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
+
             // 🔎 Verifica se a venda existe
             var vendaExists = await _context.Venda
+                .ApplySedeFilter(access)
                 .FirstOrDefaultAsync(v => v.Id == request.VendaId, cancellationToken);
 
             if (vendaExists == null)
                 throw new NotFoundException("Venda não encontrada.");
+
+            var responsavelVendaId = vendaExists.VendedorAtualId ?? vendaExists.VendedorId;
+
+            if (responsavelVendaId != access.UsuarioId)
+                throw new UnauthorizedException("Você só pode vincular chats às suas próprias vendas.");
 
             // 🔎 Verifica se já existe vínculo para esse chat/user
             var chatIdentifiers = new[] { request.WhatsappChatId, request.WhatsappChatNumero }
@@ -40,7 +53,7 @@ namespace Exemplo.Service.Handlers
                 .Include(x => x.Venda)
                 .FirstOrDefaultAsync(x =>
                     chatIdentifiers.Contains(x.WhatsappChatId) &&
-                    x.WhatsappUserId == request.WhatsappUserId,
+                    x.WhatsappUserId == responsavelVendaId.ToString(),
                     cancellationToken);
 
             if (existingLink != null)
@@ -64,7 +77,7 @@ namespace Exemplo.Service.Handlers
             {
                 VendaId = request.VendaId,
                 WhatsappChatId = request.WhatsappChatId,
-                WhatsappUserId = request.WhatsappUserId
+                WhatsappUserId = responsavelVendaId.ToString()
             };
 
             _context.VendaWhatsapp.Add(vinculo);
