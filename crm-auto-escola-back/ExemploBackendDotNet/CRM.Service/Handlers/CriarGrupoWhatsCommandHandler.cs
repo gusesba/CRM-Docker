@@ -2,6 +2,7 @@
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Exceptions;
+using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
@@ -12,16 +13,22 @@ namespace Exemplo.Service.Handlers
         : IRequestHandler<CriarGrupoWhatsCommand, GrupoWhatsappModel>
     {
         private readonly ExemploDbContext _context;
+        private readonly IUsuarioContextService _usuarioContextService;
 
-        public CriarGrupoWhatsCommandHandler(ExemploDbContext context)
+        public CriarGrupoWhatsCommandHandler(
+            ExemploDbContext context,
+            IUsuarioContextService usuarioContextService)
         {
             _context = context;
+            _usuarioContextService = usuarioContextService;
         }
 
         public async Task<GrupoWhatsappModel> Handle(
             CriarGrupoWhatsCommand request,
             CancellationToken cancellationToken)
         {
+            var access = await _usuarioContextService.GetUsuarioSedeAccessAsync(cancellationToken);
+
             // 🔎 Verifica se a venda existe
             var grupoExists = await _context.GrupoWhatsapp
                 .FirstOrDefaultAsync(v => v.Nome == request.Nome, cancellationToken);
@@ -30,7 +37,7 @@ namespace Exemplo.Service.Handlers
                 throw new ConflictException("Grupo já criado.");
 
             var usuarioExiste = await _context.Usuario
-                .AnyAsync(u => u.Id == request.UsuarioId, cancellationToken);
+                .AnyAsync(u => u.Id == access.UsuarioId, cancellationToken);
 
             if (!usuarioExiste)
                 throw new NotFoundException("Usuário não encontrado.");
@@ -44,7 +51,7 @@ namespace Exemplo.Service.Handlers
             var grupo = new GrupoWhatsappModel()
             {
                 Nome = request.Nome,
-                UsuarioId = request.UsuarioId
+                UsuarioId = access.UsuarioId
             };
 
             var entity = _context.GrupoWhatsapp.Add(grupo);
@@ -54,8 +61,13 @@ namespace Exemplo.Service.Handlers
             {
                 var leadsQuery = _context.Venda
                     .Include(v => v.VendaWhatsapp)
-                    .Where(v => v.VendedorId == request.UsuarioId)
+                    .ApplySedeFilter(access)
                     .AsQueryable();
+
+                if (!access.IsAdmin)
+                {
+                    leadsQuery = leadsQuery.Where(v => (v.VendedorAtualId ?? v.VendedorId) == access.UsuarioId);
+                }
 
                 if (request.Status.HasValue)
                     leadsQuery = leadsQuery.Where(v => v.Status == request.Status.Value);
@@ -84,11 +96,13 @@ namespace Exemplo.Service.Handlers
                     if (string.IsNullOrWhiteSpace(whatsappChatId))
                         continue;
 
+                    var responsavelVendaId = lead.VendedorAtualId ?? lead.VendedorId;
+
                     var vinculo = new VendaWhatsappModel
                     {
                         VendaId = lead.Id,
                         WhatsappChatId = whatsappChatId,
-                        WhatsappUserId = request.UsuarioId.ToString()
+                        WhatsappUserId = responsavelVendaId.ToString()
                     };
 
                     _context.VendaWhatsapp.Add(vinculo);
