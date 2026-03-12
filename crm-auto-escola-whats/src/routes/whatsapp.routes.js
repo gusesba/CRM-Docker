@@ -7,7 +7,11 @@ const {
 } = require("../utils/profileImageStorage");
 const multer = require("multer");
 const fs = require("fs");
+const crypto = require("crypto");
 const { MessageMedia } = require("whatsapp-web.js");
+
+const activeBatchByUserId = new Map();
+const BATCH_CANCELLED_ERROR = "BATCH_CANCELLED";
 
 const VALIDATE_TOKEN_URL = process.env.VALIDATE_TOKEN_URL || null;
 async function validateToken(req, res, next) {
@@ -104,6 +108,42 @@ async function buildMessageResponse(msg, userId) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createBatchId() {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `batch-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function throwIfBatchCancelled(batchControl) {
+  if (batchControl?.cancelRequested) {
+    const error = new Error("Envio em lote cancelado");
+    error.code = BATCH_CANCELLED_ERROR;
+    throw error;
+  }
+}
+
+function isBatchCancelledError(error) {
+  return error?.code === BATCH_CANCELLED_ERROR;
+}
+
+async function waitWithBatchCancellation(ms, batchControl) {
+  if (typeof ms !== "number" || Number.isNaN(ms) || ms <= 0) {
+    return;
+  }
+
+  const safeMs = Math.max(0, ms);
+  const tickMs = Math.min(250, safeMs);
+  let elapsed = 0;
+
+  while (elapsed < safeMs) {
+    throwIfBatchCancelled(batchControl);
+    const chunk = Math.min(tickMs, safeMs - elapsed);
+    await wait(chunk);
+    elapsed += chunk;
+  }
 }
 
 function getRandomInt(min, max) {
@@ -602,6 +642,13 @@ router.post("/:userId/messages/batch", async (req, res) => {
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "Lista de mensagens inválida" });
   }
+
+  if (activeBatchByUserId.has(userId)) {
+    return res.status(409).json({
+      error:
+        "Já existe um envio em lote em andamento para este usuário. Cancele-o antes de iniciar outro.",
+    });
+  }
   if (
     paramsByChatId !== undefined &&
     (typeof paramsByChatId !== "object" || Array.isArray(paramsByChatId))
@@ -650,85 +697,156 @@ router.post("/:userId/messages/batch", async (req, res) => {
     }
   }
 
+  const batchControl = {
+    id: createBatchId(),
+    startedAt: new Date().toISOString(),
+    cancelRequested: false,
+    cancelRequestedAt: null,
+  };
+
+  activeBatchByUserId.set(userId, batchControl);
+
+  const randomizeDelay = (baseMs) => {
+    if (typeof baseMs !== "number") {
+      return 0;
+    }
+    const randomized = baseMs + getRandomInt(0, baseMs);
+    return Math.max(0, randomized);
+  };
+
   const results = [];
-  for (const chatId of chatIds) {
-    const chatResult = { chatId, sent: [], errors: [] };
-    try {
-      const chat = await session.client.getChatById(chatId);
-      if (!chat) {
-        chatResult.errors.push("Chat não encontrado");
-        results.push(chatResult);
-        continue;
-      }
+  let cancelled = false;
 
-      const randomizeDelay = (baseMs) => {
-        if (typeof baseMs !== "number") {
-          return 0;
+  try {
+    for (const chatId of chatIds) {
+      throwIfBatchCancelled(batchControl);
+      const chatResult = { chatId, sent: [], errors: [] };
+      try {
+        const chat = await session.client.getChatById(chatId);
+        if (!chat) {
+          chatResult.errors.push("Chat não encontrado");
+          results.push(chatResult);
+          continue;
         }
-        const randomized = baseMs + getRandomInt(0, baseMs);
-        return Math.max(0, randomized);
-      };
 
-      for (let index = 0; index < items.length; index += 1) {
-        const item = items[index];
-        const chatParams = paramsByChatId?.[chatId] ?? {};
+        for (let index = 0; index < items.length; index += 1) {
+          throwIfBatchCancelled(batchControl);
+          const item = items[index];
+          const chatParams = paramsByChatId?.[chatId] ?? {};
 
-        try {
-          let sentMsg;
+          try {
+            let sentMsg;
 
-          if (item.type === "text") {
-            const message = applyTemplate(item.message, chatParams);
-            sentMsg = await chat.sendMessage(message, { sendSeen: false });
-          } else {
-            const data = normalizeBase64(item.data);
-            const media = new MessageMedia(
-              item.mimetype,
-              data,
-              item.filename || "media",
-            );
-            const caption =
-              typeof item.caption === "string"
-                ? applyTemplate(item.caption, chatParams)
-                : item.caption;
-            sentMsg = await chat.sendMessage(media, {
-              caption,
-              sendSeen: false,
-            });
-
-            saveMedia(
-              {
+            if (item.type === "text") {
+              const message = applyTemplate(item.message, chatParams);
+              sentMsg = await chat.sendMessage(message, { sendSeen: false });
+            } else {
+              const data = normalizeBase64(item.data);
+              const media = new MessageMedia(
+                item.mimetype,
                 data,
-                mimetype: item.mimetype,
-              },
-              sentMsg.id._serialized,
+                item.filename || "media",
+              );
+              const caption =
+                typeof item.caption === "string"
+                  ? applyTemplate(item.caption, chatParams)
+                  : item.caption;
+              sentMsg = await chat.sendMessage(media, {
+                caption,
+                sendSeen: false,
+              });
+
+              saveMedia(
+                {
+                  data,
+                  mimetype: item.mimetype,
+                },
+                sentMsg.id._serialized,
+              );
+            }
+
+            chatResult.sent.push({
+              index,
+              type: item.type,
+              messageId: sentMsg.id._serialized,
+            });
+          } catch (err) {
+            if (isBatchCancelledError(err)) {
+              throw err;
+            }
+            console.error(err);
+            chatResult.errors.push(
+              `Erro ao enviar item ${index + 1}: ${err.message}`,
             );
           }
 
-          chatResult.sent.push({
-            index,
-            type: item.type,
-            messageId: sentMsg.id._serialized,
-          });
-        } catch (err) {
+          if (
+            Number.isInteger(messagesUntilBigInterval) &&
+            (index + 1) % messagesUntilBigInterval === 0
+          ) {
+            await waitWithBatchCancellation(
+              randomizeDelay(bigIntervalMs),
+              batchControl,
+            );
+          }
+          await waitWithBatchCancellation(randomizeDelay(intervalMs), batchControl);
+        }
+      } catch (err) {
+        if (isBatchCancelledError(err)) {
+          cancelled = true;
+          chatResult.errors.push("Envio em lote cancelado");
+        } else {
           console.error(err);
-          chatResult.errors.push(
-            `Erro ao enviar item ${index + 1}: ${err.message}`,
-          );
+          chatResult.errors.push(`Erro ao enviar para chat: ${err.message}`);
         }
-        if ((index + 1) % messagesUntilBigInterval === 0) {
-          await wait(randomizeDelay(bigIntervalMs));
-        }
-        await wait(randomizeDelay(intervalMs));
       }
-    } catch (err) {
-      console.error(err);
-      chatResult.errors.push(`Erro ao enviar para chat: ${err.message}`);
-    }
 
-    results.push(chatResult);
+      results.push(chatResult);
+
+      if (cancelled) {
+        break;
+      }
+    }
+  } catch (err) {
+    if (isBatchCancelledError(err)) {
+      cancelled = true;
+    } else {
+      console.error(err);
+      return res.status(500).json({ error: "Erro ao processar envio em lote" });
+    }
+  } finally {
+    const activeBatch = activeBatchByUserId.get(userId);
+    if (activeBatch?.id === batchControl.id) {
+      activeBatchByUserId.delete(userId);
+    }
   }
-  const success = results.every((result) => result.errors.length === 0);
-  return res.json({ success, results });
+
+  const success = !cancelled && results.every((result) => result.errors.length === 0);
+  return res.json({
+    success,
+    cancelled,
+    batchId: batchControl.id,
+    cancelRequestedAt: batchControl.cancelRequestedAt,
+    results,
+  });
+});
+
+router.post("/:userId/messages/batch/cancel", async (req, res) => {
+  const { userId } = req.params;
+  const activeBatch = activeBatchByUserId.get(userId);
+
+  if (!activeBatch) {
+    return res.status(404).json({ error: "Não há envio em lote em andamento" });
+  }
+
+  activeBatch.cancelRequested = true;
+  activeBatch.cancelRequestedAt = new Date().toISOString();
+
+  return res.json({
+    success: true,
+    batchId: activeBatch.id,
+    cancelRequestedAt: activeBatch.cancelRequestedAt,
+  });
 });
 
 router.post("/:userId/messages/number", async (req, res) => {
