@@ -50,7 +50,7 @@ namespace Exemplo.Service.Handlers
                 throw new ConflictException("Venda já cadastrada.");
 
             venda.ComoConheceu = request.ComoConheceu;
-            venda.VendedorId = request.VendedorId;
+            venda.VendedorAtualId = request.VendedorId;
             venda.ValorVenda = request.ValorVenda;
             venda.Status = request.Status;
             venda.ServicoId = request.ServicoId;
