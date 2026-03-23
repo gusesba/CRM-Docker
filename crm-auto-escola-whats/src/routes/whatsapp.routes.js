@@ -287,13 +287,13 @@ router.use(validateToken);
 /**
  * LOGIN → QR CODE
  */
-router.get("/:userId/login", (req, res) => {
+router.get("/:userId/login", async (req, res) => {
   const { userId } = req.params;
 
   if (!userId || userId == undefined || userId == "undefined" || userId == null)
     return;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
 
   if (session.isReady()) {
     return res.json({
@@ -348,7 +348,7 @@ function withTimeout(promise, ms, fallback = null) {
  */
 router.get("/:userId/conversations", async (req, res) => {
   const { userId } = req.params;
-  const session = getSession(userId);
+  const session = await getSession(userId);
 
   if (!session || !session.isReady()) {
     console.log(`[${userId}] ❌ WhatsApp não conectado`);
@@ -451,7 +451,7 @@ router.post("/:userId/contacts/by-chat-ids", async (req, res) => {
   const { userId } = req.params;
   const { chatIds } = req.body;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
   }
@@ -481,7 +481,7 @@ router.get("/:userId/messages/:chatId", async (req, res) => {
   const { userId, chatId } = req.params;
   const limit = Number(req.query.limit) || 50;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({
@@ -512,7 +512,7 @@ router.get("/:userId/messages/:chatId", async (req, res) => {
 router.get("/:userId/messages/:messageId/media", async (req, res) => {
   const { userId, messageId } = req.params;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).end();
   }
@@ -549,7 +549,7 @@ router.patch("/:userId/messages/:messageId", async (req, res) => {
   const { userId, messageId } = req.params;
   const { message } = req.body;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
   }
@@ -593,7 +593,7 @@ router.delete("/:userId/messages/:messageId", async (req, res) => {
   const forEveryone =
     req.query.forEveryone === "true" || req.body?.forEveryone === true;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
   }
@@ -632,7 +632,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
     bigIntervalMs,
     messagesUntilBigInterval,
   } = req.body;
-  const session = getSession(userId);
+  const session = await getSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
   }
@@ -859,7 +859,7 @@ router.post("/:userId/messages/number", async (req, res) => {
   const { userId } = req.params;
   const { number, message } = req.body;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -920,7 +920,7 @@ router.post("/:userId/messages/:messageId/reply", async (req, res) => {
   const { userId, messageId } = req.params;
   const { message } = req.body;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -957,7 +957,7 @@ router.post("/:userId/messages/:messageId/forward", async (req, res) => {
   const { userId, messageId } = req.params;
   const { chatId } = req.body;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -990,7 +990,7 @@ router.post("/:userId/arquivar", async (req, res) => {
   const { userId } = req.params;
   const { chatId, arquivar } = req.body;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -1028,7 +1028,7 @@ router.post("/:userId/addressbook/contact", async (req, res) => {
   const { userId } = req.params;
   const { phoneNumber, firstName, lastName } = req.body;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -1053,7 +1053,7 @@ router.post("/:userId/messages/:chatId", async (req, res) => {
   const { userId, chatId } = req.params;
   const { message } = req.body;
 
-  const session = getSession(userId);
+  const session = await getSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -1084,7 +1084,7 @@ router.post(
     const { caption } = req.body;
     const file = req.file;
 
-    const session = getSession(userId);
+    const session = await getSession(userId);
     if (!session || !session.isReady()) {
       return res.status(401).json({ error: "WhatsApp não conectado" });
     }
