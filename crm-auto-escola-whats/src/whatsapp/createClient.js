@@ -5,6 +5,63 @@ const { saveMedia } = require("../utils/mediaCache");
 
 const MAX_QR_ATTEMPTS = 5;
 const QR_EXPIRATION_MS = 2 * 60 * 1000;
+const INJECT_RETRY_ATTEMPTS = 5;
+const INJECT_RETRY_DELAY_MS = 1000;
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorMessage(error) {
+  if (!error) return "";
+  if (typeof error === "string") return error;
+  if (typeof error.message === "string") return error.message;
+  return String(error);
+}
+
+function isNavigationContextError(error) {
+  const message = getErrorMessage(error);
+  return (
+    message.includes("Execution context was destroyed") ||
+    message.includes("Cannot find context with specified id") ||
+    message.includes("Inspected target navigated or closed")
+  );
+}
+
+function patchClientInjection(client, userId) {
+  if (typeof client.inject !== "function") {
+    return;
+  }
+
+  const originalInject = client.inject.bind(client);
+  let injectQueue = Promise.resolve();
+
+  client.inject = (...args) => {
+    const runInject = async () => {
+      for (let attempt = 1; attempt <= INJECT_RETRY_ATTEMPTS; attempt += 1) {
+        try {
+          return await originalInject(...args);
+        } catch (error) {
+          if (
+            !isNavigationContextError(error) ||
+            attempt === INJECT_RETRY_ATTEMPTS
+          ) {
+            throw error;
+          }
+
+          console.warn(
+            `[${userId}] Inject interrompido por navegacao do WhatsApp (${attempt}/${INJECT_RETRY_ATTEMPTS}). Tentando novamente...`,
+          );
+          await wait(INJECT_RETRY_DELAY_MS);
+        }
+      }
+    };
+
+    const nextInject = injectQueue.then(runInject, runInject);
+    injectQueue = nextInject.catch(() => undefined);
+    return nextInject;
+  };
+}
 
 function getMessageType(msg) {
   if (!msg.hasMedia) return "chat";
@@ -173,6 +230,8 @@ function createWhatsAppClient(userId, options = {}) {
     },
   });
 
+  patchClientInjection(client, userId);
+
   client.on("qr", async (qr) => {
     if (invalidated) return;
     qrAttempts += 1;
@@ -260,7 +319,11 @@ function createWhatsAppClient(userId, options = {}) {
     });
   });
 
-  client.initialize();
+  client.initialize().catch((err) => {
+    if (invalidated) return;
+    console.error(`[${userId}] Falha ao inicializar cliente WhatsApp`, err);
+    invalidate("initialize_failure");
+  });
 
   return {
     client,
