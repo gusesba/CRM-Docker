@@ -216,6 +216,31 @@ async function resolveWhatsappId(client, digits) {
   return null;
 }
 
+async function resolveBatchChatId(client, chatId) {
+  if (!client || typeof chatId !== "string") return null;
+
+  if (chatId.endsWith("@lid")) {
+    return chatId;
+  }
+
+  if (chatId.endsWith("@c.us")) {
+    const digits = normalizePhoneDigits(chatId);
+    if (!digits) return null;
+
+    const candidates = buildWhatsappCandidates(digits);
+    for (const candidate of candidates) {
+      const resolvedId = await resolveWhatsappId(client, candidate);
+      if (resolvedId) {
+        return resolvedId;
+      }
+    }
+
+    return null;
+  }
+
+  return chatId;
+}
+
 function applyTemplate(text, params = {}) {
   if (typeof text !== "string") return text;
   if (!params || typeof params !== "object") return text;
@@ -722,7 +747,10 @@ router.post("/:userId/messages/batch", async (req, res) => {
       throwIfBatchCancelled(batchControl);
       const chatResult = { chatId, sent: [], errors: [] };
       try {
-        const resolvedId = chatId;
+        const resolvedId = await resolveBatchChatId(session.client, chatId);
+        if (!resolvedId) {
+          throw new Error("Chat inválido ou não encontrado no WhatsApp");
+        }
 
         for (let index = 0; index < items.length; index += 1) {
           throwIfBatchCancelled(batchControl);
