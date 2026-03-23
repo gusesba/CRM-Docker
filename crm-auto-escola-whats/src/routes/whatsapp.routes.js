@@ -722,12 +722,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
       throwIfBatchCancelled(batchControl);
       const chatResult = { chatId, sent: [], errors: [] };
       try {
-        const chat = await session.client.getChatById(chatId);
-        if (!chat) {
-          chatResult.errors.push("Chat não encontrado");
-          results.push(chatResult);
-          continue;
-        }
+        const resolvedId = chatId;
 
         for (let index = 0; index < items.length; index += 1) {
           throwIfBatchCancelled(batchControl);
@@ -739,7 +734,9 @@ router.post("/:userId/messages/batch", async (req, res) => {
 
             if (item.type === "text") {
               const message = applyTemplate(item.message, chatParams);
-              sentMsg = await chat.sendMessage(message, { sendSeen: false });
+              sentMsg = await session.client.sendMessage(resolvedId, message, {
+                sendSeen: false,
+              });
             } else {
               const data = normalizeBase64(item.data);
               const media = new MessageMedia(
@@ -751,7 +748,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
                 typeof item.caption === "string"
                   ? applyTemplate(item.caption, chatParams)
                   : item.caption;
-              sentMsg = await chat.sendMessage(media, {
+              sentMsg = await session.client.sendMessage(resolvedId, media, {
                 caption,
                 sendSeen: false,
               });
@@ -776,7 +773,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
             }
             console.error(err);
             chatResult.errors.push(
-              `Erro ao enviar item ${index + 1}: ${err.message}`,
+              `Erro ao enviar item ${index + 1}: ${err?.message || "Erro desconhecido"}`,
             );
           }
 
@@ -797,7 +794,9 @@ router.post("/:userId/messages/batch", async (req, res) => {
           chatResult.errors.push("Envio em lote cancelado");
         } else {
           console.error(err);
-          chatResult.errors.push(`Erro ao enviar para chat: ${err.message}`);
+          chatResult.errors.push(
+            `Erro ao enviar para chat: ${err?.message || "Erro desconhecido"}`,
+          );
         }
       }
 
@@ -812,7 +811,14 @@ router.post("/:userId/messages/batch", async (req, res) => {
       cancelled = true;
     } else {
       console.error(err);
-      return res.status(500).json({ error: "Erro ao processar envio em lote" });
+      return res.status(200).json({
+        success: false,
+        cancelled,
+        batchId: batchControl.id,
+        cancelRequestedAt: batchControl.cancelRequestedAt,
+        results,
+        error: err?.message || "Erro ao processar envio em lote",
+      });
     }
   } finally {
     const activeBatch = activeBatchByUserId.get(userId);
