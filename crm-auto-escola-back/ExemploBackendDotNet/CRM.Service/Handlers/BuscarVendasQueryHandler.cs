@@ -1,6 +1,7 @@
 ﻿using Exemplo.Domain.Model;
 using Exemplo.Domain.Settings;
 using Exemplo.Persistence;
+using Exemplo.Service.Exceptions;
 using Exemplo.Service.Queries;
 using Exemplo.Service.Security;
 using MediatR;
@@ -102,11 +103,25 @@ namespace Exemplo.Service.Handlers
                 query = query.Where(v => v.Contato.ToLower().Contains(filtro));
             }
 
+            var dataInicialDe = request.DataInicialDe?.Date;
+            var dataInicialAte = request.DataInicialAte?.Date;
+
+            if (dataInicialDe.HasValue && dataInicialAte.HasValue && dataInicialDe > dataInicialAte)
+                throw new ValidationException("Data inicial não pode ser maior que a data final.");
+
             if (request.DataInicialDe.HasValue)
-                query = query.Where(v => v.DataInicial >= request.DataInicialDe.Value);
+            {
+                var dataInicialDeUtc = DateTime.SpecifyKind(dataInicialDe!.Value, DateTimeKind.Utc);
+                query = query.Where(v => v.DataInicial >= dataInicialDeUtc);
+            }
 
             if (request.DataInicialAte.HasValue)
-                query = query.Where(v => v.DataInicial <= request.DataInicialAte.Value);
+            {
+                var dataInicialAteUtc = DateTime.SpecifyKind(
+                    dataInicialAte!.Value.AddDays(1).AddTicks(-1),
+                    DateTimeKind.Utc);
+                query = query.Where(v => v.DataInicial <= dataInicialAteUtc);
+            }
 
             if (request.ValorMinimo.HasValue)
                 query = query.Where(v => v.ValorVenda >= request.ValorMinimo.Value);
