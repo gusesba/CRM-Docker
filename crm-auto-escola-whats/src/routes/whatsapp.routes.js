@@ -1,5 +1,9 @@
 const express = require("express");
-const { getSession, removeSession } = require("../whatsapp/manager");
+const {
+  getExistingSession,
+  getSession,
+  removeSession,
+} = require("../whatsapp/manager");
 const { saveMedia, getCachedMedia } = require("../utils/mediaCache");
 const {
   getProfileImageUrlFromDisk,
@@ -14,14 +18,71 @@ const activeBatchByUserId = new Map();
 const BATCH_CANCELLED_ERROR = "BATCH_CANCELLED";
 
 const VALIDATE_TOKEN_URL = process.env.VALIDATE_TOKEN_URL || null;
-async function validateToken(req, res, next) {
-  const token = req.query.token ?? req.body?.token;
+const TOKEN_USER_ID_CLAIM_KEYS = ["UserId", "userId", "userid"];
 
-  if (
-    req.method === "GET" &&
-    req.path.match(/^\/[^/]+\/messages\/[^/]+\/media$/)
-  ) {
-    return next(); // ignora validação
+function getTokenFromRequest(req) {
+  const authHeader = req.headers?.authorization;
+  if (typeof authHeader === "string") {
+    const bearerMatch = authHeader.trim().match(/^Bearer\s+(.+)$/i);
+    if (bearerMatch?.[1]) {
+      return bearerMatch[1].trim();
+    }
+  }
+
+  if (typeof req.query?.token === "string" && req.query.token.trim() !== "") {
+    return req.query.token.trim();
+  }
+
+  if (typeof req.body?.token === "string" && req.body.token.trim() !== "") {
+    return req.body.token.trim();
+  }
+
+  return null;
+}
+
+function isAnonymousMediaRequest(req) {
+  return req.method === "GET" && /\/messages\/[^/]+\/media$/.test(req.path);
+}
+
+function decodeJwtPayload(token) {
+  if (typeof token !== "string") return null;
+
+  const segments = token.split(".");
+  if (segments.length < 2) return null;
+
+  try {
+    const base64 = segments[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const rawPayload = Buffer.from(padded, "base64").toString("utf8");
+    return JSON.parse(rawPayload);
+  } catch (error) {
+    return null;
+  }
+}
+
+function extractTokenUserId(jwtPayload) {
+  if (!jwtPayload || typeof jwtPayload !== "object") return null;
+
+  for (const claimKey of TOKEN_USER_ID_CLAIM_KEYS) {
+    const value = jwtPayload[claimKey];
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    const normalized = String(value).trim();
+    if (normalized !== "") {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+async function validateToken(req, res, next) {
+  const token = getTokenFromRequest(req);
+
+  if (isAnonymousMediaRequest(req) && !token) {
+    req.auth = null;
+    return next();
   }
 
   if (!token) {
@@ -49,11 +110,41 @@ async function validateToken(req, res, next) {
       return res.status(401).json({ error: "Token inválido" });
     }
 
+    req.auth = {
+      token,
+      validatedPayload: payload,
+      jwtPayload: decodeJwtPayload(token),
+    };
+    req.auth.userId =
+      extractTokenUserId(req.auth.jwtPayload) || extractTokenUserId(payload);
+
     return next();
   } catch (error) {
     console.error("Erro ao validar token:", error);
     return res.status(500).json({ error: "Erro ao validar token" });
   }
+}
+
+function authorizeUserRoute(req, res, next) {
+  if (isAnonymousMediaRequest(req) && !req.auth?.token) {
+    return next();
+  }
+
+  const routeUserId = req.params?.userId;
+  if (!routeUserId) {
+    return next();
+  }
+
+  const tokenUserId = req.auth?.userId;
+  if (!tokenUserId) {
+    return res.status(401).json({ error: "Token sem UserId" });
+  }
+
+  if (String(tokenUserId) !== String(routeUserId)) {
+    return res.status(403).json({ error: "Usuario nao autorizado" });
+  }
+
+  return next();
 }
 
 function getMessageType(msg) {
@@ -308,6 +399,7 @@ async function buildChatResponse(
 
 const router = express.Router();
 router.use(validateToken);
+router.use("/:userId", authorizeUserRoute);
 
 /**
  * LOGIN → QR CODE
@@ -373,7 +465,7 @@ function withTimeout(promise, ms, fallback = null) {
  */
 router.get("/:userId/conversations", async (req, res) => {
   const { userId } = req.params;
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
 
   if (!session || !session.isReady()) {
     console.log(`[${userId}] ❌ WhatsApp não conectado`);
@@ -476,7 +568,7 @@ router.post("/:userId/contacts/by-chat-ids", async (req, res) => {
   const { userId } = req.params;
   const { chatIds } = req.body;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
   }
@@ -506,7 +598,7 @@ router.get("/:userId/messages/:chatId", async (req, res) => {
   const { userId, chatId } = req.params;
   const limit = Number(req.query.limit) || 50;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({
@@ -537,7 +629,7 @@ router.get("/:userId/messages/:chatId", async (req, res) => {
 router.get("/:userId/messages/:messageId/media", async (req, res) => {
   const { userId, messageId } = req.params;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).end();
   }
@@ -574,7 +666,7 @@ router.patch("/:userId/messages/:messageId", async (req, res) => {
   const { userId, messageId } = req.params;
   const { message } = req.body;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
   }
@@ -618,7 +710,7 @@ router.delete("/:userId/messages/:messageId", async (req, res) => {
   const forEveryone =
     req.query.forEveryone === "true" || req.body?.forEveryone === true;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
   }
@@ -657,7 +749,7 @@ router.post("/:userId/messages/batch", async (req, res) => {
     bigIntervalMs,
     messagesUntilBigInterval,
   } = req.body;
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
   }
@@ -887,7 +979,7 @@ router.post("/:userId/messages/number", async (req, res) => {
   const { userId } = req.params;
   const { number, message } = req.body;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -948,7 +1040,7 @@ router.post("/:userId/messages/:messageId/reply", async (req, res) => {
   const { userId, messageId } = req.params;
   const { message } = req.body;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -985,7 +1077,7 @@ router.post("/:userId/messages/:messageId/forward", async (req, res) => {
   const { userId, messageId } = req.params;
   const { chatId } = req.body;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -1018,7 +1110,7 @@ router.post("/:userId/arquivar", async (req, res) => {
   const { userId } = req.params;
   const { chatId, arquivar } = req.body;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -1056,7 +1148,7 @@ router.post("/:userId/addressbook/contact", async (req, res) => {
   const { userId } = req.params;
   const { phoneNumber, firstName, lastName } = req.body;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -1081,7 +1173,7 @@ router.post("/:userId/messages/:chatId", async (req, res) => {
   const { userId, chatId } = req.params;
   const { message } = req.body;
 
-  const session = await getSession(userId);
+  const session = await getExistingSession(userId);
 
   if (!session || !session.isReady()) {
     return res.status(401).json({ error: "WhatsApp não conectado" });
@@ -1112,7 +1204,7 @@ router.post(
     const { caption } = req.body;
     const file = req.file;
 
-    const session = await getSession(userId);
+    const session = await getExistingSession(userId);
     if (!session || !session.isReady()) {
       return res.status(401).json({ error: "WhatsApp não conectado" });
     }

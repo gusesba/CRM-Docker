@@ -232,6 +232,25 @@ async function getSession(userId) {
   });
 }
 
+async function getExistingSession(userId) {
+  return withSessionLock(userId, async () => {
+    const existing = sessions.get(userId);
+    if (
+      existing &&
+      typeof existing.isActive === "function" &&
+      existing.isActive()
+    ) {
+      return existing;
+    }
+
+    if (existing) {
+      sessions.delete(userId);
+    }
+
+    return null;
+  });
+}
+
 /**
  * Remove sessão (logout)
  */
@@ -257,6 +276,7 @@ async function removeSession(userId, options = {}) {
 }
 
 module.exports = {
+  getExistingSession,
   getSession,
   removeSession,
 };
