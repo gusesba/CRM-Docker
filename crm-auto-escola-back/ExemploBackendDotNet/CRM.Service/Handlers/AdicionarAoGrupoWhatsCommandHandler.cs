@@ -2,6 +2,7 @@
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Exceptions;
+using Exemplo.Service.Helpers;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,6 +28,30 @@ namespace Exemplo.Service.Handlers
 
             if (adicionado != null)
                 throw new ConflictException("Já adicionado ao grupo.");
+
+            var vendaWhatsapp = await _context.VendaWhatsapp
+                .Include(vw => vw.Venda)
+                .FirstOrDefaultAsync(vw => vw.Id == request.IdVendaWhats, cancellationToken);
+
+            if (vendaWhatsapp == null)
+                throw new NotFoundException("Conversa não encontrada.");
+
+            var contatoNovo = vendaWhatsapp.Venda?.Contato;
+            if (!string.IsNullOrWhiteSpace(contatoNovo))
+            {
+                var conversasExistentes = await _context.GrupoVendaWhatsapp
+                    .AsNoTracking()
+                    .Where(gv => gv.IdGrupo == request.IdGrupoWhats)
+                    .Include(gv => gv.VendaWhatsapp)
+                    .ThenInclude(vw => vw.Venda)
+                    .ToListAsync(cancellationToken);
+
+                var contatoDuplicado = conversasExistentes.Any(gv =>
+                    ContatoNormalization.AreEquivalent(gv.VendaWhatsapp?.Venda?.Contato, contatoNovo));
+
+                if (contatoDuplicado)
+                    throw new ConflictException("Já existe um contato equivalente neste grupo.");
+            }
 
             var grupoVenda = new GrupoVendaWhatsappModel()
             {

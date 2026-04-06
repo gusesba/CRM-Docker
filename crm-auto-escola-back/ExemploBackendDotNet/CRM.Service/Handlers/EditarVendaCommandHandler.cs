@@ -39,15 +39,23 @@ namespace Exemplo.Service.Handlers
                 venda.SedeId = request.SedeId;
             }
 
+            var sedeDestinoId = request.SedeId ?? venda.SedeId;
             var contatosParaComparar = ContatoNormalization.BuildPhoneVariants(request.Contato).ToList();
-            var vendaExistente = await _context.Venda
+            var vendasEquivalentes = await _context.Venda
                 .AsNoTracking()
-                .Where(v => v.Id != venda.Id && v.Contato != null)
-                .Select(v => new { v.Id, v.Contato })
-                .FirstOrDefaultAsync(v => contatosParaComparar.Contains(v.Contato!), cancellationToken);
+                .Where(v => v.Contato != null)
+                .Select(v => new { v.Id, v.Contato, v.SedeId })
+                .Where(v => contatosParaComparar.Contains(v.Contato!))
+                .OrderBy(v => v.Id)
+                .ToListAsync(cancellationToken);
 
-            if (vendaExistente != null)
+            var vendaExistenteNaMesmaSede = vendasEquivalentes
+                .FirstOrDefault(v => v.Id != venda.Id && v.SedeId == sedeDestinoId);
+
+            if (vendaExistenteNaMesmaSede != null)
                 throw new ConflictException("Venda já cadastrada.");
+
+            var contatoCanonico = vendasEquivalentes.FirstOrDefault()?.Contato ?? request.Contato;
 
             venda.ComoConheceu = request.ComoConheceu;
             venda.VendedorAtualId = request.VendedorId;
@@ -57,7 +65,7 @@ namespace Exemplo.Service.Handlers
             venda.Origem = request.Origem;
             venda.Obs = request.Obs;
             venda.CondicaoVendaId = request.CondicaoVendaId;
-            venda.Contato = request.Contato;
+            venda.Contato = contatoCanonico;
             venda.Email = request.Email;
             venda.Fone = request.Fone;
             venda.Genero = request.Genero;

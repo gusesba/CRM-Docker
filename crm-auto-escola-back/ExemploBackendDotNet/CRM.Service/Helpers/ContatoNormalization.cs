@@ -6,9 +6,9 @@ namespace Exemplo.Service.Helpers
 {
     public static class ContatoNormalization
     {
-        public static HashSet<string> BuildPhoneVariants(string input)
+        public static HashSet<string> BuildPhoneVariants(string? input)
         {
-            var digits = Normalize(input);
+            var digits = NormalizeDigits(input);
             var variants = new HashSet<string>(StringComparer.Ordinal);
 
             if (string.IsNullOrWhiteSpace(digits))
@@ -16,28 +16,12 @@ namespace Exemplo.Service.Helpers
                 return variants;
             }
 
-            void AddVariants(string value)
-            {
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    return;
-                }
-
-                variants.Add(value);
-                variants.Add(RemoveNinthDigitAfterDDD(value));
-            }
-
-            AddVariants(digits);
-
-            if (digits.StartsWith("55", StringComparison.Ordinal))
-            {
-                AddVariants(digits.Substring(2));
-            }
+            AddLocalAndCountryVariants(RemoveCountryCode(digits), variants);
 
             return variants;
         }
 
-        private static string Normalize(string input)
+        public static string NormalizeDigits(string? input)
         {
             if (string.IsNullOrWhiteSpace(input))
             {
@@ -45,6 +29,54 @@ namespace Exemplo.Service.Helpers
             }
 
             return new string(input.Where(char.IsDigit).ToArray());
+        }
+
+        public static string BuildComparisonKey(string? input)
+        {
+            var digits = NormalizeDigits(input);
+            if (string.IsNullOrWhiteSpace(digits))
+            {
+                return string.Empty;
+            }
+
+            return RemoveNinthDigitAfterDDD(RemoveCountryCode(digits));
+        }
+
+        public static bool AreEquivalent(string? left, string? right)
+        {
+            var leftKey = BuildComparisonKey(left);
+            var rightKey = BuildComparisonKey(right);
+
+            return !string.IsNullOrWhiteSpace(leftKey) &&
+                   string.Equals(leftKey, rightKey, StringComparison.Ordinal);
+        }
+
+        private static void AddLocalAndCountryVariants(string localDigits, ISet<string> variants)
+        {
+            if (string.IsNullOrWhiteSpace(localDigits))
+            {
+                return;
+            }
+
+            void AddVariant(string value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return;
+                }
+
+                variants.Add(value);
+            }
+
+            var withoutNine = RemoveNinthDigitAfterDDD(localDigits);
+            var withNine = AddNinthDigitAfterDDD(localDigits);
+
+            AddVariant(localDigits);
+            AddVariant(withoutNine);
+            AddVariant(withNine);
+            AddVariant(EnsureCountryCode(localDigits));
+            AddVariant(EnsureCountryCode(withoutNine));
+            AddVariant(EnsureCountryCode(withNine));
         }
 
         private static string RemoveNinthDigitAfterDDD(string phone)
@@ -67,6 +99,46 @@ namespace Exemplo.Service.Helpers
             }
 
             return phone;
+        }
+
+        private static string AddNinthDigitAfterDDD(string phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone))
+            {
+                return phone;
+            }
+
+            var localDigits = RemoveCountryCode(phone);
+            if (localDigits.Length == 10)
+            {
+                return $"{localDigits.Substring(0, 2)}9{localDigits.Substring(2)}";
+            }
+
+            return localDigits;
+        }
+
+        private static string RemoveCountryCode(string phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone))
+            {
+                return phone;
+            }
+
+            return phone.StartsWith("55", StringComparison.Ordinal)
+                ? phone.Substring(2)
+                : phone;
+        }
+
+        private static string EnsureCountryCode(string phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone))
+            {
+                return phone;
+            }
+
+            return phone.StartsWith("55", StringComparison.Ordinal)
+                ? phone
+                : $"55{phone}";
         }
     }
 }

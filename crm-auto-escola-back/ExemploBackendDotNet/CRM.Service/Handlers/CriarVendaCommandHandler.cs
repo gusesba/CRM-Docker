@@ -21,17 +21,24 @@ namespace Exemplo.Service.Handlers
         public async Task<VendaModel> Handle(CriarVendaCommand request, CancellationToken cancellationToken)
         {
             var contatosParaComparar = ContatoNormalization.BuildPhoneVariants(request.Contato).ToList();
-            var vendaExistente = await _context.Venda
+            var vendasEquivalentes = await _context.Venda
                 .AsNoTracking()
                 .Where(v => v.Contato != null)
-                .Select(v => new { v.Id, v.Contato })
-                .FirstOrDefaultAsync(v => contatosParaComparar.Contains(v.Contato!), cancellationToken);
+                .Select(v => new { v.Id, v.Contato, v.SedeId })
+                .Where(v => contatosParaComparar.Contains(v.Contato!))
+                .OrderBy(v => v.Id)
+                .ToListAsync(cancellationToken);
 
-            if (vendaExistente != null)
+            var vendaExistenteNaMesmaSede = vendasEquivalentes
+                .FirstOrDefault(v => v.SedeId == request.SedeId);
+
+            if (vendaExistenteNaMesmaSede != null)
                 throw new ConflictException("Venda já cadastrada.");
 
             if (!string.IsNullOrWhiteSpace(request.ObsRetorno) && request.DataRetorno == null)
                 throw new ConflictException("Data de retorno é obrigatória quando a observação de retorno é informada.");
+
+            var contatoCanonico = vendasEquivalentes.FirstOrDefault()?.Contato ?? request.Contato;
 
             var novoVenda = new VendaModel()
             {
@@ -44,7 +51,7 @@ namespace Exemplo.Service.Handlers
                 Origem = request.Origem,
                 Obs = request.Obs,
                 CondicaoVendaId = request.CondicaoVendaId,
-                Contato = request.Contato,
+                Contato = contatoCanonico,
                 Email = request.Email,
                 DataInicial = DateTime.UtcNow,
                 Fone = request.Fone,
@@ -56,8 +63,8 @@ namespace Exemplo.Service.Handlers
                 VendedorAtualId = request.VendedorId
             };
 
-            var venda = await _context.Venda.AddAsync(novoVenda);
-            await _context.SaveChangesAsync();
+            var venda = await _context.Venda.AddAsync(novoVenda, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
 
             if (request.DataRetorno.HasValue)
             {

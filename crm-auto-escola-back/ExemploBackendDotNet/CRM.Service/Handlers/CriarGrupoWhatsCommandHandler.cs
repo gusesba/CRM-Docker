@@ -2,6 +2,7 @@
 using Exemplo.Persistence;
 using Exemplo.Service.Commands;
 using Exemplo.Service.Exceptions;
+using Exemplo.Service.Helpers;
 using Exemplo.Service.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -48,14 +49,7 @@ namespace Exemplo.Service.Handlers
             if (dataInicialDe.HasValue && dataInicialAte.HasValue && dataInicialDe > dataInicialAte)
                 throw new ValidationException("Data inicial não pode ser maior que a data final.");
 
-            var grupo = new GrupoWhatsappModel()
-            {
-                Nome = request.Nome,
-                UsuarioId = access.UsuarioId
-            };
-
-            var entity = _context.GrupoWhatsapp.Add(grupo);
-            await _context.SaveChangesAsync(cancellationToken);
+            List<VendaModel> leads = new();
 
             if (request.Status.HasValue || request.ServicoId.HasValue || request.DataInicialDe.HasValue || request.DataInicialAte.HasValue)
             {
@@ -87,8 +81,21 @@ namespace Exemplo.Service.Handlers
                     leadsQuery = leadsQuery.Where(v => v.DataInicial <= dataInicialAteUtc);
                 }
 
-                var leads = await leadsQuery.ToListAsync(cancellationToken);
+                leads = await leadsQuery.ToListAsync(cancellationToken);
+                leads = DeduplicateLeadsByContact(leads);
+            }
 
+            var grupo = new GrupoWhatsappModel()
+            {
+                Nome = request.Nome,
+                UsuarioId = access.UsuarioId
+            };
+
+            var entity = _context.GrupoWhatsapp.Add(grupo);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (leads.Count > 0)
+            {
                 foreach (var lead in leads.Where(v => v.VendaWhatsapp == null))
                 {
                     var whatsappChatId = BuildWhatsappChatId(lead.Contato);
@@ -131,6 +138,29 @@ namespace Exemplo.Service.Handlers
             }
 
             return entity.Entity;
+        }
+
+        private static List<VendaModel> DeduplicateLeadsByContact(IEnumerable<VendaModel> leads)
+        {
+            var selectedLeads = new List<VendaModel>();
+            var seenContacts = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var lead in leads)
+            {
+                var comparisonKey = ContatoNormalization.BuildComparisonKey(lead.Contato);
+
+                if (!string.IsNullOrWhiteSpace(comparisonKey))
+                {
+                    if (!seenContacts.Add(comparisonKey))
+                    {
+                        continue;
+                    }
+                }
+
+                selectedLeads.Add(lead);
+            }
+
+            return selectedLeads;
         }
 
         private static string BuildWhatsappChatId(string contato)
