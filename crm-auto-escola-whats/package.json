@@ -14,6 +14,6 @@
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.3",
     "uuid": "^13.0.0",
-    "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js#b69644b8c35ea9d3fcb763bf55d4441354b2164f"
+    "whatsapp-web.js": "github:wwebjs/whatsapp-web.js#b0a4b6c"
   }
 }
